@@ -1,0 +1,3303 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configurador 3D de Racks Selectivos — COSMOS Global Logistics</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Michroma&display=swap"
+    rel="stylesheet"
+  />
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', sans-serif;
+      background-color: #0b0f17;
+      color: #f1f5f9;
+    }
+    .font-mono-tech {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .font-cosmos {
+      font-family: 'Michroma', 'Inter', sans-serif;
+    }
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+    #dimensions-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 5;
+      overflow: hidden;
+    }
+    .dim-label {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(56, 189, 248, 0.65);
+      color: #e0f2fe;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(4px);
+    }
+    .dim-label.level {
+      border-color: rgba(242, 101, 34, 0.85);
+      color: #ffedd5;
+      font-size: 9.5px;
+      padding: 1px 6px;
+    }
+    .dim-label.tunnel {
+      border-color: rgba(16, 185, 129, 0.85);
+      background: rgba(6, 78, 59, 0.92);
+      color: #d1fae5;
+    }
+    .dim-label.row-total {
+      border-color: rgba(250, 204, 21, 0.85);
+      background: rgba(30, 27, 15, 0.92);
+      color: #fef08a;
+      font-size: 10.5px;
+    }
+    .dim-label.rack-tag {
+      border-color: rgba(148, 163, 184, 0.7);
+      background: rgba(15, 23, 42, 0.95);
+      color: #f8fafc;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+    }
+    .dim-label.rack-tag.active-rack {
+      border-color: rgba(249, 115, 22, 0.95);
+      background: rgba(67, 20, 7, 0.95);
+      color: #ffedd5;
+    }
+    .dim-label.aisle-banner {
+      border-color: rgba(56, 189, 248, 0.9);
+      background: rgba(8, 47, 73, 0.94);
+      color: #f0f9ff;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      padding: 3px 9px;
+    }
+    .dim-label.aisle-banner.aisle-3 {
+      border-color: rgba(251, 146, 60, 0.95);
+      background: rgba(67, 20, 7, 0.94);
+      color: #ffedd5;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 5px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.5);
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.5);
+      border-radius: 9999px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.8);
+    }
+    input[type='number']::-webkit-inner-spin-button {
+      opacity: 1;
+    }
+    /* Ajuste fluido del panel lateral y pie según el tamaño de pantalla al 100% de zoom */
+    #control-sidebar {
+      width: clamp(295px, 26vw, 390px);
+    }
+  </style>
+
+  <!-- Import Map para Three.js v0.160.0 desde CDN -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- Contenedor WebGL 3D -->
+  <div id="canvas-container"></div>
+
+  <!-- Capa de Etiquetas HTML Proyectadas para Cotas 3D, Racks y Pasillos -->
+  <div id="dimensions-overlay"></div>
+
+  <!-- Botón Flotante para Salir del Modo "Solo 3D" -->
+  <button
+    id="btn-exit-clean-view"
+    type="button"
+    title="Restaurar paneles e indicadores (Esc / H)"
+    class="hidden fixed top-3 right-3 z-40 bg-slate-900/85 hover:bg-slate-800 text-slate-200 border border-slate-700/80 backdrop-blur-md px-3 py-2 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-2 transition"
+  >
+    <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+    </svg>
+    <span>Mostrar UI</span>
+  </button>
+
+  <!-- Banner de Notificación No Bloqueante -->
+  <div
+    id="status-toast"
+    class="fixed top-20 left-1/2 -translate-x-1/2 z-30 hidden bg-slate-900/95 border border-sky-400/60 text-sky-100 text-xs font-medium px-4 py-2 rounded-xl shadow-2xl backdrop-blur-md transition-opacity duration-300"
+  ></div>
+
+  <!-- HUD Superior: Logo COSMOS Global Logistics, Título, Métricas Clave y Alertas Normativas -->
+  <header id="hud-header" class="fixed top-2 left-2 right-2 z-20 flex flex-wrap items-center justify-between gap-1.5 pointer-events-none">
+    <!-- Branding Institucional COSMOS GLOBAL LOGISTICS + Título del Configurador -->
+    <div class="pointer-events-auto bg-slate-900/92 backdrop-blur-md border border-slate-700/80 rounded-xl px-3 py-1.5 shadow-2xl flex items-center gap-2.5">
+      <!-- Placa de Logotipo Oficial COSMOS GLOBAL LOGISTICS -->
+      <div
+        class="bg-[#05111e] rounded-lg px-2.5 py-1.5 border border-slate-700/90 shadow-inner flex items-center gap-2 shrink-0"
+        title="COSMOS Global Logistics"
+      >
+        <svg class="w-7 h-6 shrink-0" viewBox="0 0 80 68" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Isotipo COSMOS Global Logistics">
+          <path d="M4 4H22L4 21V4Z" fill="#FFFFFF" />
+          <path d="M76 4H58L76 21V4Z" fill="#FFFFFF" />
+          <path
+            d="M4 28C22 10 34 6 40 6C46 6 58 10 76 28V40C58 22 46 18 40 18C34 18 22 22 4 40V28Z"
+            fill="#FFFFFF"
+          />
+          <path
+            d="M4 50C22 32 34 28 40 28C46 28 58 32 76 50V62C58 44 46 40 40 40C34 40 22 44 4 62V50Z"
+            fill="#FFFFFF"
+          />
+        </svg>
+        <div class="flex flex-col justify-center">
+          <span class="font-cosmos font-bold tracking-[0.1em] text-white text-xs leading-none">
+            COSMOS
+          </span>
+          <span class="text-[7px] font-semibold tracking-[0.24em] text-slate-200 mt-1 leading-none uppercase">
+            GLOBAL LOGISTICS
+          </span>
+        </div>
+      </div>
+
+      <div>
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <h1 class="text-xs sm:text-sm font-bold tracking-tight text-white">
+            Configurador 3D de Racks Selectivos
+          </h1>
+          <span class="hidden 2xl:inline-block text-[10px] font-mono-tech uppercase px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-400/30">
+            Izq P1 · Centro P2 · Der P3
+          </span>
+        </div>
+        <p id="active-scope-subtitle" class="text-[10.5px] text-slate-400">
+          Editando: Rack 3A (1F Simple Prof.) · Bastidor 5.50 m · Paso 1.250 m
+        </p>
+      </div>
+    </div>
+
+    <!-- Panel HUD Central de KPIs y Alertas Normativas -->
+    <div class="pointer-events-auto flex flex-wrap items-center gap-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl px-2.5 py-1.5 shadow-2xl">
+      <!-- KPI: Nichos Totales y Ocupación -->
+      <div class="px-2 py-1 rounded-lg bg-slate-800/80 border border-slate-700/70">
+        <div class="text-[9.5px] uppercase tracking-wider text-slate-400 font-semibold">Ocupación (6 Racks)</div>
+        <div class="flex items-baseline gap-1">
+          <span id="kpi-placed-pallets" class="text-base font-bold font-mono-tech text-orange-400">0</span>
+          <span class="text-[11px] font-mono-tech text-slate-400">/ <span id="kpi-total-pallets" class="text-slate-200 font-semibold">0</span></span>
+          <span id="kpi-occupancy-pct" class="text-[10px] font-mono-tech px-1 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30">0.0%</span>
+        </div>
+        <div id="kpi-deductions-summary" class="text-[9.5px] font-mono-tech text-emerald-400">
+          P1:0/0 · P2:0/0 · P3:0/0
+        </div>
+      </div>
+
+      <!-- KPI: Longitudes y Anchos de Pasillos -->
+      <div class="px-2 py-1 rounded-lg bg-slate-800/80 border border-slate-700/70">
+        <div class="text-[9.5px] uppercase tracking-wider text-slate-400 font-semibold">Layout & Profundidad</div>
+        <div class="text-[11px] font-mono-tech text-slate-200">
+          <span class="text-sky-400 font-semibold">A:</span> <span id="kpi-len-a">17.38</span>m ·
+          <span class="text-amber-400 font-semibold">B:</span> <span id="kpi-len-b">19.85</span>m
+        </div>
+        <div id="kpi-aisle-widths" class="text-[9.5px] font-mono-tech text-slate-300">
+          P1:3.20m · P2:3.20m · P3:3.20m · 2F:0/6
+        </div>
+      </div>
+
+      <!-- KPI: Validaciones Normativas -->
+      <div class="flex flex-col gap-0.5 pl-0.5">
+        <div id="alert-top-clearance" class="flex items-center gap-1.5 text-[10.5px] px-2 py-0.5 rounded-md border font-medium">
+          <span class="w-1.5 h-1.5 rounded-full"></span>
+          <span>Resguardo Punta: 0.500 m</span>
+        </div>
+        <div id="alert-beam-clearance" class="flex items-center gap-1.5 text-[10.5px] px-2 py-0.5 rounded-md border font-medium">
+          <span class="w-1.5 h-1.5 rounded-full"></span>
+          <span>Luz Libre Mín: 1.150 m</span>
+        </div>
+        <div id="alert-tunnel-clearance" class="hidden items-center gap-1.5 text-[10.5px] px-2 py-0.5 rounded-md border font-medium">
+          <span class="w-1.5 h-1.5 rounded-full"></span>
+          <span>Túnel Paso: 3.650 m</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Botones de Acción Superior: Guardar/Compartir, Solo 3D y Toggle Panel Lateral -->
+    <div class="pointer-events-auto flex items-center gap-1.5">
+      <button
+        id="btn-share-state"
+        type="button"
+        title="Guardar cambios y copiar enlace compartible con el estado exacto del almacén"
+        class="bg-emerald-600/90 hover:bg-emerald-500 backdrop-blur-md border border-emerald-400/60 rounded-xl px-2.5 py-2 shadow-2xl flex items-center gap-1.5 text-xs font-semibold text-white transition"
+      >
+        <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+        </svg>
+        <span>Guardar / Compartir</span>
+      </button>
+
+      <button
+        id="btn-clean-view"
+        type="button"
+        title="Ocultar toda la interfaz y ver solo el almacén 3D (Tecla H)"
+        class="bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700 rounded-xl px-2.5 py-2 shadow-2xl flex items-center gap-1.5 text-xs font-semibold text-slate-200 transition"
+      >
+        <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+        </svg>
+        <span>Solo 3D</span>
+      </button>
+
+      <button
+        id="toggle-sidebar-btn"
+        type="button"
+        class="bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700 rounded-xl px-2.5 py-2 shadow-2xl flex items-center gap-1.5 text-xs font-semibold text-slate-200 transition"
+      >
+        <svg class="w-3.5 h-3.5 text-sky-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        </svg>
+        <span id="toggle-sidebar-text">Ocultar Panel</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Panel Lateral de Control Paramétrico (se posiciona dinámicamente debajo del header) -->
+  <aside
+    id="control-sidebar"
+    class="fixed right-2 z-20 bg-slate-900/92 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-transform duration-300"
+    style="top: 76px; bottom: 54px;"
+  >
+    <div class="px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/40 shrink-0">
+      <span class="text-[11px] font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+        Control Paramétrico (6 Racks)
+      </span>
+      <button
+        id="btn-reset-defaults"
+        type="button"
+        class="text-[11px] text-sky-400 hover:text-sky-300 font-medium underline underline-offset-2"
+      >
+        Restaurar valores
+      </button>
+    </div>
+
+    <div class="p-3.5 overflow-y-auto custom-scroll space-y-4 flex-1 text-xs">
+      <!-- Selector de Destino Rápido (Rack Individual, Pasillo o Todos) -->
+      <section class="bg-slate-950/85 border border-sky-500/35 rounded-xl p-2.5 space-y-2">
+        <div class="flex items-center justify-between">
+          <label class="text-[10.5px] font-bold uppercase tracking-wider text-sky-300">
+            Destino de Edición (Rack / Pasillo)
+          </label>
+          <span
+            id="active-rack-badge"
+            class="text-[10px] font-mono-tech px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/40"
+          >
+            Rack 3A
+          </span>
+        </div>
+
+        <!-- Fila 1: 6 Racks Individuales -->
+        <div>
+          <div class="text-[10px] text-slate-400 mb-1">Editar Rack Individual:</div>
+          <div class="grid grid-cols-6 gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+            <button type="button" data-scope="rack:1A" class="scope-btn py-1 px-1 rounded-md font-mono-tech font-bold text-[11px] text-slate-300 hover:text-white transition">1A</button>
+            <button type="button" data-scope="rack:1B" class="scope-btn py-1 px-1 rounded-md font-mono-tech font-bold text-[11px] text-slate-300 hover:text-white transition">1B</button>
+            <button type="button" data-scope="rack:2A" class="scope-btn py-1 px-1 rounded-md font-mono-tech font-bold text-[11px] text-slate-300 hover:text-white transition">2A</button>
+            <button type="button" data-scope="rack:2B" class="scope-btn py-1 px-1 rounded-md font-mono-tech font-bold text-[11px] text-slate-300 hover:text-white transition">2B</button>
+            <button type="button" data-scope="rack:3A" class="scope-btn py-1 px-1 rounded-md font-mono-tech font-bold text-[11px] bg-orange-600 text-white shadow transition">3A</button>
+            <button type="button" data-scope="rack:3B" class="scope-btn py-1 px-1 rounded-md font-mono-tech font-bold text-[11px] text-slate-300 hover:text-white transition">3B</button>
+          </div>
+        </div>
+
+        <!-- Fila 2: Selección Masiva por Pasillo o Todos -->
+        <div>
+          <div class="text-[10px] text-slate-400 mb-1">Aplicar Masivamente a Pasillo / Almacén:</div>
+          <div class="grid grid-cols-4 gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+            <button type="button" data-scope="aisle:1" class="scope-btn py-1 px-1 rounded-md font-mono-tech font-semibold text-[10px] text-sky-300 hover:text-white transition">P1 (Izq)</button>
+            <button type="button" data-scope="aisle:2" class="scope-btn py-1 px-1 rounded-md font-mono-tech font-semibold text-[10px] text-sky-300 hover:text-white transition">P2 (Cen)</button>
+            <button type="button" data-scope="aisle:3" class="scope-btn py-1 px-1 rounded-md font-mono-tech font-semibold text-[10px] text-orange-300 hover:text-white transition">P3 (Der)</button>
+            <button type="button" data-scope="all" class="scope-btn py-1 px-1 rounded-md font-bold text-[10px] text-emerald-300 hover:text-white transition">Todos (6)</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sección 1: Selección de Racks de Doble Profundidad (2F) y Doble Nivel (2X) -->
+      <section class="space-y-2.5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-orange-400">
+            1. Doble Profundidad (2F) y Doble Nivel (2X)
+          </h2>
+          <span id="badge-2f-count" class="text-[10px] font-mono-tech text-sky-300">0/6 en 2F</span>
+        </div>
+
+        <!-- Selector Interactivo de Doble Profundidad (1F / 2F) por Rack -->
+        <div class="bg-slate-950/80 border border-sky-500/40 rounded-xl p-2.5 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <span class="text-[11px] font-bold text-sky-200 block">Seleccionar Racks de Doble Profundidad:</span>
+              <span class="text-[9.5px] text-slate-400">Haz clic en cada rack para alternar 1F ↔ 2F</span>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                id="btn-all-2f"
+                title="Convertir los racks del destino seleccionado a Doble Profundidad"
+                class="px-2 py-1 rounded bg-sky-600 hover:bg-sky-500 text-[10px] font-mono-tech font-semibold text-white transition"
+              >
+                Activar 2F
+              </button>
+              <button
+                type="button"
+                id="btn-all-1f"
+                title="Convertir los racks del destino seleccionado a Simple Profundidad"
+                class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-slate-300 border border-slate-700 transition"
+              >
+                1F
+              </button>
+            </div>
+          </div>
+
+          <div id="double-depth-racks-grid" class="grid grid-cols-3 gap-1.5"></div>
+
+          <div class="flex items-center justify-between gap-1.5 pt-1">
+            <span class="text-[10px] text-slate-400">Bloques centrales:</span>
+            <div class="flex gap-1">
+              <button
+                type="button"
+                id="btn-preset-central-2f"
+                class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-sky-300 border border-slate-700 transition"
+              >
+                2A+2B en 2F
+              </button>
+              <button
+                type="button"
+                id="btn-preset-all-global-2f"
+                class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-emerald-300 border border-slate-700 transition"
+              >
+                Todos 2F
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-800/80">
+            <label for="inp-double-depth-gap" class="text-[10.5px] text-slate-300">
+              Separación interna 2F (m):
+            </label>
+            <input
+              id="inp-double-depth-gap"
+              type="number"
+              step="0.02"
+              min="0.10"
+              max="0.60"
+              value="0.20"
+              class="w-20 bg-slate-800 border border-slate-700 focus:border-sky-500 rounded-md px-2 py-1 font-mono-tech text-right text-white text-[11px] outline-none"
+            />
+          </div>
+        </div>
+
+        <!-- Toggle de Doble Nivel / Doble Altura ("2X ON") por Rack -->
+        <div class="bg-slate-950/75 border border-slate-800 rounded-xl p-2.5 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-semibold text-slate-200">Doble Nivel / Doble Altura (2X):</span>
+            <span class="text-[9.5px] text-orange-300 font-mono-tech">Quita viga</span>
+          </div>
+          <div id="double-level-racks-grid" class="grid grid-cols-3 gap-1.5"></div>
+
+          <div class="border-t border-slate-800/80 pt-2">
+            <div class="text-[10.5px] text-slate-300 font-medium mb-1">
+              Niveles de viga deshabilitados en
+              <span id="lbl-beam-target-rack" class="text-orange-300 font-mono-tech font-bold">Rack 3A</span>:
+            </div>
+            <div id="global-beam-levels-container" class="flex flex-wrap gap-1.5"></div>
+          </div>
+        </div>
+
+        <!-- Deshabilitación puntual por Rack + Bahía + Nivel -->
+        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 space-y-2">
+          <div class="text-[11px] text-slate-300 font-medium">Quitar / Restaurar tramo puntual (Bahía + Nivel):</div>
+          <div class="grid grid-cols-3 gap-1.5">
+            <div>
+              <label for="sel-beam-rack" class="block text-[10px] text-slate-400 mb-0.5">Rack</label>
+              <select id="sel-beam-rack" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 font-mono-tech text-white outline-none">
+                <option value="1A">Rack 1A</option>
+                <option value="1B">Rack 1B</option>
+                <option value="2A">Rack 2A</option>
+                <option value="2B">Rack 2B</option>
+                <option value="3A" selected>Rack 3A</option>
+                <option value="3B">Rack 3B</option>
+              </select>
+            </div>
+            <div>
+              <label for="sel-beam-bay" class="block text-[10px] text-slate-400 mb-0.5">Bahía</label>
+              <select id="sel-beam-bay" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"></select>
+            </div>
+            <div>
+              <label for="sel-beam-level" class="block text-[10px] text-slate-400 mb-0.5">Nivel Viga</label>
+              <select id="sel-beam-level" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"></select>
+            </div>
+          </div>
+          <button
+            type="button"
+            id="btn-toggle-single-beam"
+            class="w-full py-1.5 px-3 rounded-lg bg-orange-600/90 hover:bg-orange-500 text-white font-semibold text-[11px] shadow transition"
+          >
+            Quitar / Restaurar Tramo Puntual
+          </button>
+
+          <div id="disabled-beams-list" class="flex flex-wrap gap-1.5 pt-0.5"></div>
+        </div>
+      </section>
+
+      <!-- Sección 2: Alturas del Rack Seleccionado y Niveles Individuales -->
+      <section class="space-y-3">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-sky-400">
+            2. Alturas y Niveles del Rack
+          </h2>
+          <button
+            type="button"
+            id="btn-copy-heights-all"
+            title="Copiar altura de bastidor, niveles y pasos de este rack a los 6 racks"
+            class="text-[10px] bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 px-2 py-0.5 rounded font-medium transition"
+          >
+            Copiar alturas a todos
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label for="inp-rack-height" class="block text-slate-400 mb-1">Altura Bastidor (m)</label>
+            <input
+              id="inp-rack-height"
+              type="number"
+              step="0.05"
+              min="2.50"
+              max="15.00"
+              value="5.50"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2.5 py-1.5 font-mono-tech text-white outline-none"
+            />
+          </div>
+          <div>
+            <label for="inp-levels" class="block text-slate-400 mb-1">Niveles de Carga</label>
+            <select
+              id="inp-levels"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2.5 py-1.5 font-mono-tech text-white outline-none"
+            >
+              <option value="3">3 Niveles (Piso + 2)</option>
+              <option value="4">4 Niveles (Piso + 3)</option>
+              <option value="5" selected>5 Niveles (Piso + 4)</option>
+              <option value="6">6 Niveles (Piso + 5)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="bg-slate-950/75 border border-slate-800 rounded-xl p-2.5 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-semibold text-sky-300">Paso Uniforme (m):</span>
+            <div class="flex items-center gap-1">
+              <input
+                id="inp-uniform-pitch"
+                type="number"
+                step="0.005"
+                min="0.60"
+                max="3.50"
+                value="1.250"
+                class="w-20 bg-slate-800 border border-slate-700 focus:border-sky-500 rounded-md px-2 py-1 font-mono-tech text-right text-white text-[11px] outline-none"
+              />
+              <button
+                type="button"
+                id="btn-apply-uniform-pitch"
+                class="px-2 py-1 rounded-md bg-sky-600 hover:bg-sky-500 text-white font-semibold text-[10px] shrink-0 transition"
+              >
+                Aplicar paso
+              </button>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-800/80 pt-2">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-[10.5px] font-semibold text-slate-300">Alturas Individuales por Nivel (m):</span>
+              <span class="text-[9.5px] text-slate-400">Cota acum. / Luz neta</span>
+            </div>
+            <div id="individual-levels-container" class="space-y-1.5"></div>
+          </div>
+        </div>
+
+        <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-2.5 space-y-1 font-mono-tech text-[11px]">
+          <div class="flex justify-between">
+            <span class="text-slate-400">Último par largueros:</span>
+            <span id="calc-top-beam" class="text-orange-400 font-semibold">5.000 m</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Resguardo libre punta:</span>
+            <span id="calc-top-margin" class="text-sky-400 font-semibold">0.500 m</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Luz libre mín. / máx.:</span>
+            <span id="calc-net-clearance" class="text-emerald-400 font-semibold">1.150 m</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sección 3: Dimensiones Generales, Pasillos y Separación Espalda-Espalda -->
+      <section class="space-y-3">
+        <h2 class="text-[11px] font-bold uppercase tracking-wider text-sky-400 border-b border-slate-800 pb-1">
+          3. Layout General, Pasillos y Espalda-Espalda
+        </h2>
+
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label for="inp-beam-length" class="block text-[10px] text-slate-400 mb-1">Largo Viga (m)</label>
+            <input
+              id="inp-beam-length"
+              type="number"
+              step="0.01"
+              min="1.20"
+              max="4.00"
+              value="2.38"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+            />
+          </div>
+          <div>
+            <label for="inp-beam-height" class="block text-[10px] text-slate-400 mb-1">Peralte Viga (m)</label>
+            <input
+              id="inp-beam-height"
+              type="number"
+              step="0.01"
+              min="0.06"
+              max="0.24"
+              value="0.10"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+            />
+          </div>
+          <div>
+            <label for="inp-rack-depth" class="block text-[10px] text-slate-400 mb-1">Prof. Rack (m)</label>
+            <input
+              id="inp-rack-depth"
+              type="number"
+              step="0.05"
+              min="0.80"
+              max="1.60"
+              value="1.10"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label for="inp-bays-a" class="block text-[10px] text-slate-400 mb-1">Bahías Filas A</label>
+            <input
+              id="inp-bays-a"
+              type="number"
+              step="1"
+              min="1"
+              max="20"
+              value="7"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+            />
+          </div>
+          <div>
+            <label for="inp-bays-b" class="block text-[10px] text-slate-400 mb-1">Bahías Filas B</label>
+            <input
+              id="inp-bays-b"
+              type="number"
+              step="1"
+              min="1"
+              max="20"
+              value="8"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+            />
+          </div>
+          <div>
+            <label for="inp-back-spacer" class="block text-[10px] text-emerald-300 mb-1">Sep. Espalda (m)</label>
+            <input
+              id="inp-back-spacer"
+              type="number"
+              step="0.01"
+              min="0.05"
+              max="0.25"
+              value="0.10"
+              class="w-full bg-slate-800/90 border border-emerald-700/70 focus:border-emerald-400 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+            />
+          </div>
+        </div>
+
+        <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-2.5 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-semibold text-slate-200">Ancho de cada pasillo (m):</span>
+            <span class="text-[9.5px] text-slate-400">Izq · Centro · Der</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label for="inp-aisle-1" class="block text-[10px] text-sky-300 mb-0.5">P1 (Izq)</label>
+              <input
+                id="inp-aisle-1"
+                type="number"
+                step="0.10"
+                min="1.80"
+                max="7.00"
+                value="3.20"
+                class="w-full bg-slate-800 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+              />
+            </div>
+            <div>
+              <label for="inp-aisle-2" class="block text-[10px] text-sky-300 mb-0.5">P2 (Centro)</label>
+              <input
+                id="inp-aisle-2"
+                type="number"
+                step="0.10"
+                min="1.80"
+                max="7.00"
+                value="3.20"
+                class="w-full bg-slate-800 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+              />
+            </div>
+            <div>
+              <label for="inp-aisle-3" class="block text-[10px] text-orange-300 mb-0.5">P3 (Der)</label>
+              <input
+                id="inp-aisle-3"
+                type="number"
+                step="0.10"
+                min="1.80"
+                max="7.00"
+                value="3.20"
+                class="w-full bg-slate-800 border border-slate-700 focus:border-orange-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sección 4: 3 Puertas Enrollables (Apertura hacia arriba) -->
+      <section class="space-y-2.5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-amber-400">
+            4. Puertas de Acceso (3 Cortinas Verticales)
+          </h2>
+          <span id="doors-status-badge" class="text-[10px] font-mono-tech text-amber-300">Apertura: 75%</span>
+        </div>
+
+        <div class="bg-slate-950/75 border border-amber-500/35 rounded-xl p-2.5 space-y-2.5">
+          <label class="flex items-center justify-between cursor-pointer">
+            <span class="text-slate-200 font-medium text-[11px]">Mostrar 3 Puertas en Cabecera</span>
+            <input id="chk-doors" type="checkbox" checked class="w-4 h-4 accent-amber-500 rounded cursor-pointer" />
+          </label>
+
+          <div class="space-y-1">
+            <div class="flex items-center justify-between text-[10.5px]">
+              <span class="text-slate-300">Altura de apertura hacia arriba:</span>
+              <span id="lbl-door-open-pct" class="font-mono-tech font-bold text-amber-300">75%</span>
+            </div>
+            <input
+              id="slider-door-open"
+              type="range"
+              min="0"
+              max="100"
+              value="75"
+              class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
+            />
+            <div class="grid grid-cols-3 gap-1 pt-1">
+              <button type="button" data-door-pct="0" class="door-preset-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-slate-300 border border-slate-700 transition">Cerrar 0%</button>
+              <button type="button" data-door-pct="50" class="door-preset-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-slate-300 border border-slate-700 transition">Media 50%</button>
+              <button type="button" data-door-pct="100" class="door-preset-btn py-1 rounded bg-amber-600/80 hover:bg-amber-500 text-[10px] font-mono-tech text-white font-semibold transition">Abrir 100%</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-800/80" id="individual-doors-grid"></div>
+        </div>
+      </section>
+
+      <!-- Sección 5: Túneles / Pasos Transversales -->
+      <section class="space-y-2.5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+            5. Túneles / Pasos Transversales
+          </h2>
+          <span id="tunnel-levels-badge" class="text-[10px] font-mono-tech text-emerald-300">Libera N1–N3</span>
+        </div>
+
+        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+          <div>
+            <label for="inp-tunnel-levels" class="block text-slate-200 font-medium text-[11px]">Niveles libres en túnel</label>
+            <span id="tunnel-clear-height-preview" class="text-[10px] font-mono-tech text-emerald-400">Altura libre: 3.650 m</span>
+          </div>
+          <select
+            id="inp-tunnel-levels"
+            class="bg-slate-800/95 border border-slate-700 focus:border-emerald-500 rounded-lg px-2.5 py-1.5 font-mono-tech text-white outline-none"
+          ></select>
+        </div>
+
+        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5">
+          <div class="text-[11px] font-semibold text-emerald-300 mb-1.5">
+            Bahías con Túnel en <span id="lbl-tunnel-target-rack" class="font-mono-tech">Rack 3A</span>:
+          </div>
+          <div id="tunnels-bays-container" class="flex flex-wrap gap-1.5"></div>
+        </div>
+      </section>
+
+      <!-- Sección 6: Control de Ocupación, Patrones y Capas 3D -->
+      <section class="space-y-2.5">
+        <h2 class="text-[11px] font-bold uppercase tracking-wider text-sky-400 border-b border-slate-800 pb-1">
+          6. Ocupación de Pallets y Capas 3D
+        </h2>
+
+        <label class="flex items-center justify-between bg-slate-800/60 hover:bg-slate-800 px-3 py-2 rounded-lg cursor-pointer transition">
+          <span class="text-slate-200 font-medium">Mostrar Pallets y Cargas con Film</span>
+          <input id="chk-pallets" type="checkbox" checked class="w-4 h-4 accent-orange-500 rounded cursor-pointer" />
+        </label>
+
+        <div id="pallet-occupancy-controls" class="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span id="occupancy-target-title" class="text-[11px] font-semibold text-slate-200">Pallets en Rack 3A:</span>
+            <span id="sidebar-occupancy-label" class="text-[11px] font-mono-tech text-orange-400 font-semibold">0 / 0 (0.0%)</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <input
+              id="slider-pallet-count"
+              type="range"
+              min="0"
+              max="200"
+              value="0"
+              class="flex-1 accent-orange-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
+            />
+            <input
+              id="inp-pallet-count"
+              type="number"
+              min="0"
+              max="200"
+              value="0"
+              class="w-16 bg-slate-800 border border-slate-700 focus:border-orange-500 rounded-lg px-2 py-1 font-mono-tech text-right text-white outline-none"
+            />
+          </div>
+
+          <div class="grid grid-cols-4 gap-1">
+            <button type="button" data-pct="0" class="pct-preset-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-slate-300 border border-slate-700 transition">Vacío 0%</button>
+            <button type="button" data-pct="0.5" class="pct-preset-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-slate-300 border border-slate-700 transition">50%</button>
+            <button type="button" data-pct="0.85" class="pct-preset-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-slate-300 border border-slate-700 transition">85%</button>
+            <button type="button" data-pct="1" class="pct-preset-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-slate-300 border border-slate-700 transition">Lleno 100%</button>
+          </div>
+
+          <div>
+            <label for="sel-fill-pattern" class="block text-[10px] text-slate-400 mb-1">Patrón de llenado</label>
+            <select
+              id="sel-fill-pattern"
+              class="w-full bg-slate-800/95 border border-slate-700 focus:border-sky-500 rounded-lg px-2.5 py-1.5 text-[11px] text-white outline-none"
+            >
+              <option value="sequential">Secuencial (FIFO)</option>
+              <option value="bottom-up">Desde niveles inferiores</option>
+              <option value="random">Aleatorio (ABC)</option>
+            </select>
+          </div>
+        </div>
+
+        <label class="flex items-center justify-between bg-slate-800/60 hover:bg-slate-800 px-3 py-2 rounded-lg cursor-pointer transition">
+          <span class="text-slate-200 font-medium">Cotas 3D Dinámicas</span>
+          <input id="chk-dimensions" type="checkbox" checked class="w-4 h-4 accent-sky-500 rounded cursor-pointer" />
+        </label>
+
+        <label class="flex items-center justify-between bg-slate-800/60 hover:bg-slate-800 px-3 py-2 rounded-lg cursor-pointer transition">
+          <span class="text-slate-200 font-medium">Protectores y Defensas</span>
+          <input id="chk-guards" type="checkbox" checked class="w-4 h-4 accent-amber-500 rounded cursor-pointer" />
+        </label>
+      </section>
+    </div>
+  </aside>
+
+  <!-- Barra Inferior de Vistas Rápidas de Cámara -->
+  <footer id="cam-footer" class="fixed bottom-2 left-1/2 -translate-x-1/2 z-20 flex flex-wrap items-center justify-center gap-1 bg-slate-900/92 backdrop-blur-md border border-slate-700/80 rounded-2xl p-1 shadow-2xl max-w-[96vw]">
+    <button type="button" data-view="iso" class="cam-view-btn px-2.5 py-1 rounded-xl text-xs font-semibold bg-blue-600 text-white shadow transition">
+      Isométrica
+    </button>
+    <button type="button" data-view="front" class="cam-view-btn px-2.5 py-1 rounded-xl text-xs font-semibold text-amber-300 hover:bg-slate-800 hover:text-white transition">
+      Puertas (Frente)
+    </button>
+    <button type="button" data-view="aisle1" class="cam-view-btn px-2.5 py-1 rounded-xl text-xs font-semibold text-sky-300 hover:bg-slate-800 hover:text-white transition">
+      Pasillo 1 (Izq)
+    </button>
+    <button type="button" data-view="aisle2" class="cam-view-btn px-2.5 py-1 rounded-xl text-xs font-semibold text-sky-300 hover:bg-slate-800 hover:text-white transition">
+      Pasillo 2 (Centro)
+    </button>
+    <button type="button" data-view="aisle3" class="cam-view-btn px-2.5 py-1 rounded-xl text-xs font-semibold text-orange-300 hover:bg-slate-800 hover:text-white transition">
+      Pasillo 3 (Der)
+    </button>
+    <button type="button" data-view="top" class="cam-view-btn px-2.5 py-1 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition">
+      Planta
+    </button>
+  </footer>
+
+  <!-- Lógica Principal 3D con Three.js -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    let toastTimer = null;
+    function showToast(message, duration = 2600) {
+      const toast = document.getElementById('status-toast');
+      if (!toast) return;
+      toast.textContent = message;
+      toast.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, duration);
+    }
+
+    // =========================================================================
+    // AJUSTE DINÁMICO AL TAMAÑO DE PANTALLA (ZOOM 100%)
+    // =========================================================================
+    function updateResponsiveLayout() {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      // Escala proporcional de raíz para que a 100% de zoom en laptops (1366x768) y monitores HD/4K todo quepa cómodamente
+      const scaleFactor = Math.max(0.84, Math.min(1.0, Math.min(vw / 1520, vh / 840)));
+      document.documentElement.style.fontSize = `${(16 * scaleFactor).toFixed(2)}px`;
+
+      const headerEl = document.getElementById('hud-header');
+      const sidebarEl = document.getElementById('control-sidebar');
+      const footerEl = document.getElementById('cam-footer');
+
+      if (headerEl && sidebarEl && footerEl) {
+        const headerRect = headerEl.getBoundingClientRect();
+        const footerRect = footerEl.getBoundingClientRect();
+        const topOffset = Math.max(60, Math.ceil(headerRect.bottom + 8));
+        const bottomOffset = Math.max(46, Math.ceil(vh - footerRect.top + 8));
+        sidebarEl.style.top = `${topOffset}px`;
+        sidebarEl.style.bottom = `${bottomOffset}px`;
+      }
+    }
+
+    // =========================================================================
+    // 1. ESTADO PARAMÉTRICO DE LOS 6 RACKS, 3 PASILLOS, 3 PUERTAS Y PERSISTENCIA
+    // =========================================================================
+    const RACK_IDS = ['1A', '1B', '2A', '2B', '3A', '3B'];
+    const STORAGE_KEY = 'cosmos_racks_3d_saved_state_v1';
+
+    function createRackConfig(
+      id,
+      aisleId,
+      side,
+      defaultPalletCount,
+      defaultTunnels = [],
+      isDoubleHeightDefault = false,
+      isDoubleDepthDefault = false
+    ) {
+      return {
+        id,
+        aisleId,
+        side,
+        rackHeight: 5.50,
+        levels: 5,
+        levelHeights: [1.250, 1.250, 1.250, 1.250, 1.250, 1.250],
+        tunnelLevels: 3,
+        tunnels: new Set(defaultTunnels),
+        doubleDepth: Boolean(isDoubleDepthDefault),
+        disabledLevels: new Set(isDoubleHeightDefault ? [1] : []),
+        disabledTramos: new Set(),
+        palletCount: defaultPalletCount,
+        fillPattern: 'sequential',
+        randomSeed: 40 + id.charCodeAt(0) * 13 + id.charCodeAt(1) * 7,
+      };
+    }
+
+    function createInitialState() {
+      return {
+        beamLength: 2.38,
+        beamHeight: 0.10,
+        rackDepth: 1.10,
+        doubleDepthGap: 0.20,
+        backToBackSpacer: 0.10,
+        baysA: 7,
+        baysB: 8,
+        aisleWidths: {
+          1: 3.20,
+          2: 3.20,
+          3: 3.20,
+        },
+        showDoors: true,
+        doorTargetOpen: {
+          1: 0.75,
+          2: 0.75,
+          3: 0.75,
+        },
+        doorCurrentOpen: {
+          1: 0.75,
+          2: 0.75,
+          3: 0.75,
+        },
+        activeScope: 'rack:3A',
+        showPallets: true,
+        showDimensions: true,
+        showGuards: true,
+        racks: {
+          '1A': createRackConfig('1A', 1, 'A', 55, [], false, false),
+          '1B': createRackConfig('1B', 1, 'B', 65, [], false, false),
+          '2A': createRackConfig('2A', 2, 'A', 52, [], false, false),
+          '2B': createRackConfig('2B', 2, 'B', 60, [], false, false),
+          '3A': createRackConfig('3A', 3, 'A', 58, [7], false, false),
+          '3B': createRackConfig('3B', 3, 'B', 68, [], false, false),
+        },
+      };
+    }
+
+    let state = createInitialState();
+
+    function serializeStatePayload(includeCamera = true) {
+      const racksSerialized = {};
+      RACK_IDS.forEach((id) => {
+        const r = state.racks[id];
+        racksSerialized[id] = {
+          h: r.rackHeight,
+          lv: r.levels,
+          lh: r.levelHeights,
+          tl: r.tunnelLevels,
+          tn: Array.from(r.tunnels),
+          dd: r.doubleDepth ? 1 : 0,
+          dl: Array.from(r.disabledLevels),
+          dt: Array.from(r.disabledTramos),
+          pc: r.palletCount,
+          fp: r.fillPattern,
+          rs: r.randomSeed,
+        };
+      });
+
+      const payload = {
+        v: 1,
+        bl: state.beamLength,
+        bh: state.beamHeight,
+        rd: state.rackDepth,
+        dg: state.doubleDepthGap,
+        bs: state.backToBackSpacer,
+        ba: state.baysA,
+        bb: state.baysB,
+        aw: state.aisleWidths,
+        sd: state.showDoors ? 1 : 0,
+        do: state.doorTargetOpen,
+        sc: state.activeScope,
+        sp: state.showPallets ? 1 : 0,
+        sm: state.showDimensions ? 1 : 0,
+        sg: state.showGuards ? 1 : 0,
+        rk: racksSerialized,
+      };
+
+      if (includeCamera && typeof camera !== 'undefined' && typeof controls !== 'undefined') {
+        payload.cam = {
+          p: [
+            Number(camera.position.x.toFixed(2)),
+            Number(camera.position.y.toFixed(2)),
+            Number(camera.position.z.toFixed(2)),
+          ],
+          t: [
+            Number(controls.target.x.toFixed(2)),
+            Number(controls.target.y.toFixed(2)),
+            Number(controls.target.z.toFixed(2)),
+          ],
+        };
+      }
+
+      const jsonStr = JSON.stringify(payload);
+      const bytes = new TextEncoder().encode(jsonStr);
+      let binStr = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binStr += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binStr).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function applySerializedPayload(encodedStr) {
+      try {
+        let b64 = encodedStr.replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4) b64 += '=';
+        const binStr = atob(b64);
+        const bytes = new Uint8Array(binStr.length);
+        for (let i = 0; i < binStr.length; i++) {
+          bytes[i] = binStr.charCodeAt(i);
+        }
+        const jsonStr = new TextDecoder().decode(bytes);
+        const p = JSON.parse(jsonStr);
+        if (!p || p.v !== 1 || !p.rk) return null;
+
+        const base = createInitialState();
+        if (typeof p.bl === 'number') base.beamLength = p.bl;
+        if (typeof p.bh === 'number') base.beamHeight = p.bh;
+        if (typeof p.rd === 'number') base.rackDepth = p.rd;
+        if (typeof p.dg === 'number') base.doubleDepthGap = p.dg;
+        if (typeof p.bs === 'number') base.backToBackSpacer = p.bs;
+        if (typeof p.ba === 'number') base.baysA = p.ba;
+        if (typeof p.bb === 'number') base.baysB = p.bb;
+        if (p.aw) {
+          base.aisleWidths[1] = Number(p.aw[1]) || 3.20;
+          base.aisleWidths[2] = Number(p.aw[2]) || 3.20;
+          base.aisleWidths[3] = Number(p.aw[3]) || 3.20;
+        }
+        if (p.sd !== undefined) base.showDoors = Boolean(p.sd);
+        if (p.do) {
+          [1, 2, 3].forEach((id) => {
+            const val = typeof p.do[id] === 'number' ? p.do[id] : 0.75;
+            base.doorTargetOpen[id] = val;
+            base.doorCurrentOpen[id] = val;
+          });
+        }
+        if (typeof p.sc === 'string') base.activeScope = p.sc;
+        if (p.sp !== undefined) base.showPallets = Boolean(p.sp);
+        if (p.sm !== undefined) base.showDimensions = Boolean(p.sm);
+        if (p.sg !== undefined) base.showGuards = Boolean(p.sg);
+
+        RACK_IDS.forEach((id) => {
+          const sr = p.rk[id];
+          if (!sr) return;
+          const r = base.racks[id];
+          if (typeof sr.h === 'number') r.rackHeight = sr.h;
+          if (typeof sr.lv === 'number') r.levels = sr.lv;
+          if (Array.isArray(sr.lh)) r.levelHeights = [...sr.lh];
+          if (typeof sr.tl === 'number') r.tunnelLevels = sr.tl;
+          if (Array.isArray(sr.tn)) r.tunnels = new Set(sr.tn);
+          if (sr.dd !== undefined) r.doubleDepth = Boolean(sr.dd);
+          if (Array.isArray(sr.dl)) r.disabledLevels = new Set(sr.dl);
+          if (Array.isArray(sr.dt)) r.disabledTramos = new Set(sr.dt);
+          if (typeof sr.pc === 'number') r.palletCount = sr.pc;
+          if (typeof sr.fp === 'string') r.fillPattern = sr.fp;
+          if (typeof sr.rs === 'number') r.randomSeed = sr.rs;
+        });
+
+        state = base;
+        return p.cam || null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function autoSaveLocalState() {
+      try {
+        const encoded = serializeStatePayload(false);
+        localStorage.setItem(STORAGE_KEY, encoded);
+      } catch (e) {}
+    }
+
+    const UPRIGHT_WIDTH = 0.09;
+    const PALLET_W = 1.00;
+    const PALLET_D = 1.20;
+    const PALLET_DECK_H = 0.145;
+
+    function getTargetRacks() {
+      if (state.activeScope === 'all') {
+        return RACK_IDS.map((id) => state.racks[id]);
+      }
+      if (state.activeScope.startsWith('aisle:')) {
+        const aId = parseInt(state.activeScope.split(':')[1], 10);
+        return RACK_IDS.map((id) => state.racks[id]).filter((r) => r.aisleId === aId);
+      }
+      const rId = state.activeScope.split(':')[1];
+      return [state.racks[rId] || state.racks['3A']];
+    }
+
+    function getReferenceRack() {
+      if (state.activeScope.startsWith('rack:')) {
+        return state.racks[state.activeScope.split(':')[1]] || state.racks['3A'];
+      }
+      if (state.activeScope.startsWith('aisle:')) {
+        const aId = parseInt(state.activeScope.split(':')[1], 10);
+        return state.racks[`${aId}A`];
+      }
+      return state.racks['3A'];
+    }
+
+    function getRackBays(rack) {
+      return rack.side === 'A' ? state.baysA : state.baysB;
+    }
+
+    function getRackFootprintDepth(rack) {
+      return rack.doubleDepth ? state.rackDepth * 2 + state.doubleDepthGap : state.rackDepth;
+    }
+
+    function getLevelElevations(rack) {
+      const elevations = [0];
+      let acc = 0;
+      for (let i = 1; i < rack.levels; i++) {
+        acc += rack.levelHeights[i - 1] || 1.250;
+        elevations.push(acc);
+      }
+      return elevations;
+    }
+
+    function getTunnelClearHeight(rack) {
+      const elevations = getLevelElevations(rack);
+      const cleared = Math.min(rack.tunnelLevels, rack.levels - 1);
+      return Math.max(0.5, elevations[cleared] - state.beamHeight);
+    }
+
+    // =========================================================================
+    // 2. ESCENA, CÁMARA, RENDERER E ILUMINACIÓN
+    // =========================================================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b0f17);
+    scene.fog = new THREE.FogExp2(0x0b0f17, 0.0042);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 320);
+    camera.position.set(-24, 15.5, 18);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.maxPolarAngle = Math.PI / 2 - 0.02;
+    controls.minDistance = 2;
+    controls.maxDistance = 125;
+    controls.target.set(0, 2.3, 0);
+
+    const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 0.9);
+    hemiLight.position.set(0, 30, 0);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.45);
+    dirLight.position.set(-22, 36, 26);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 2;
+    dirLight.shadow.camera.far = 115;
+    const sBound = 40;
+    dirLight.shadow.camera.left = -sBound;
+    dirLight.shadow.camera.right = sBound;
+    dirLight.shadow.camera.top = sBound;
+    dirLight.shadow.camera.bottom = -sBound;
+    dirLight.shadow.bias = -0.0005;
+    scene.add(dirLight);
+
+    const fillLight = new THREE.DirectionalLight(0x93c5fd, 0.48);
+    fillLight.position.set(24, 16, -24);
+    scene.add(fillLight);
+
+    // =========================================================================
+    // 3. TEXTURAS PROCEDURALES Y MATERIALES (INCLUYENDO PUERTAS COSMOS P1, P2, P3)
+    // =========================================================================
+    function createPerforatedSteelTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0B4F9F';
+      ctx.fillRect(0, 0, 128, 256);
+
+      const grad = ctx.createLinearGradient(0, 0, 128, 0);
+      grad.addColorStop(0, 'rgba(255,255,255,0.12)');
+      grad.addColorStop(0.5, 'rgba(255,255,255,0.0)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.22)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 128, 256);
+
+      ctx.fillStyle = '#051933';
+      for (let y = 16; y < 256; y += 32) {
+        [34, 94].forEach((x) => {
+          ctx.beginPath();
+          ctx.roundRect(x - 5, y - 8, 10, 16, 4);
+          ctx.fill();
+        });
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(1, 12);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function createConcreteFloorTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#1e2530';
+      ctx.fillRect(0, 0, 512, 512);
+
+      for (let i = 0; i < 9000; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const v = 26 + Math.floor(Math.random() * 18);
+        ctx.fillStyle = `rgb(${v},${v + 5},${v + 12})`;
+        ctx.fillRect(x, y, 2, 2);
+      }
+
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.75)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(1.5, 1.5, 509, 509);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(32, 32);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function createCardboardBoxTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#b6895b';
+      ctx.fillRect(0, 0, 256, 256);
+
+      ctx.strokeStyle = '#785532';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(0, 128);
+      ctx.lineTo(256, 128);
+      ctx.moveTo(128, 0);
+      ctx.lineTo(128, 256);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(214, 182, 138, 0.65)';
+      ctx.fillRect(0, 60, 256, 8);
+      ctx.fillRect(0, 188, 256, 8);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(22, 24, 34, 22);
+      ctx.fillRect(150, 152, 34, 22);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    // Textura personalizada de cada puerta con Logotipo COSMOS Global Logistics + "ACCESO / PUERTA P1, P2, P3"
+    function createCosmosDoorTexture(aisleId) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 768;
+      const ctx = canvas.getContext('2d');
+
+      // Fondo azul marino muy oscuro
+      ctx.fillStyle = '#040c16';
+      ctx.fillRect(0, 0, 512, 768);
+
+      // Textura sutil de lamas horizontales de cortina enrollable
+      for (let y = 32; y < 736; y += 24) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.025)';
+        ctx.fillRect(0, y, 512, 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.fillRect(0, y + 22, 512, 2);
+      }
+
+      // Franjas diagonales de seguridad celeste (#0096d6) y negro arriba y abajo
+      const drawHazardStripe = (yTop, h) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, yTop, 512, h);
+        ctx.clip();
+
+        ctx.fillStyle = '#030811';
+        ctx.fillRect(0, yTop, 512, h);
+
+        ctx.fillStyle = '#0284c7';
+        for (let x = -40; x < 560; x += 42) {
+          ctx.beginPath();
+          ctx.moveTo(x, yTop + h);
+          ctx.lineTo(x + 21, yTop + h);
+          ctx.lineTo(x + 38, yTop);
+          ctx.lineTo(x + 17, yTop);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+      };
+
+      drawHazardStripe(0, 28);
+      drawHazardStripe(740, 28);
+
+      // Marco interior sutil gris azulado
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(24, 46, 464, 676);
+
+      // Isotipo COSMOS blanco centrado en la parte superior
+      const ix = 186;
+      const iy = 96;
+      const iw = 140;
+      const ih = 116;
+
+      ctx.fillStyle = '#e2e8f0';
+      // Triángulos superiores
+      ctx.beginPath();
+      ctx.moveTo(ix, iy);
+      ctx.lineTo(ix + 34, iy);
+      ctx.lineTo(ix, iy + 32);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(ix + iw, iy);
+      ctx.lineTo(ix + iw - 34, iy);
+      ctx.lineTo(ix + iw, iy + 32);
+      ctx.closePath();
+      ctx.fill();
+
+      // Onda superior
+      ctx.beginPath();
+      ctx.moveTo(ix, iy + 46);
+      ctx.quadraticCurveTo(ix + iw / 2, iy - 6, ix + iw, iy + 46);
+      ctx.lineTo(ix + iw, iy + 68);
+      ctx.quadraticCurveTo(ix + iw / 2, iy + 16, ix, iy + 68);
+      ctx.closePath();
+      ctx.fill();
+
+      // Onda inferior
+      ctx.beginPath();
+      ctx.moveTo(ix, iy + 84);
+      ctx.quadraticCurveTo(ix + iw / 2, iy + 32, ix + iw, iy + 84);
+      ctx.lineTo(ix + iw, iy + ih - 10);
+      ctx.quadraticCurveTo(ix + iw / 2, iy + 54, ix, iy + ih - 10);
+      ctx.closePath();
+      ctx.fill();
+
+      // Wordmark COSMOS + GLOBAL LOGISTICS
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '700 44px "Michroma", "Inter", sans-serif';
+      ctx.fillText('COSMOS', 256, 260);
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '700 15px "Inter", sans-serif';
+      ctx.fillText('G L O B A L   L O G I S T I C S', 256, 300);
+
+      // Línea separadora horizontal celeste
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(64, 344);
+      ctx.lineTo(448, 344);
+      ctx.stroke();
+
+      // Recuadro redondeado celeste para ACCESO / PUERTA P1 | P2 | P3
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.roundRect(84, 392, 344, 232, 26);
+      ctx.stroke();
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = '700 16px "JetBrains Mono", monospace';
+      ctx.fillText('ACCESO / PUERTA', 256, 444);
+
+      ctx.fillStyle = '#0284c7';
+      ctx.font = '800 118px "Inter", sans-serif';
+      ctx.fillText(`P${aisleId}`, 256, 542);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      return tex;
+    }
+
+    const doorCurtainMaterials = {
+      1: new THREE.MeshStandardMaterial({
+        map: createCosmosDoorTexture(1),
+        roughness: 0.42,
+        metalness: 0.45,
+      }),
+      2: new THREE.MeshStandardMaterial({
+        map: createCosmosDoorTexture(2),
+        roughness: 0.42,
+        metalness: 0.45,
+      }),
+      3: new THREE.MeshStandardMaterial({
+        map: createCosmosDoorTexture(3),
+        roughness: 0.42,
+        metalness: 0.45,
+      }),
+    };
+
+    const materials = {
+      uprightBlue: new THREE.MeshStandardMaterial({
+        map: createPerforatedSteelTexture(),
+        roughness: 0.42,
+        metalness: 0.55,
+      }),
+      galvanizedSteel: new THREE.MeshStandardMaterial({
+        color: 0xb8c4d0,
+        roughness: 0.35,
+        metalness: 0.78,
+      }),
+      doorFrameDark: new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        roughness: 0.45,
+        metalness: 0.65,
+      }),
+      doorHeaderAccent: new THREE.MeshStandardMaterial({
+        color: 0x0284c7,
+        roughness: 0.38,
+        metalness: 0.45,
+      }),
+      beamOrange: new THREE.MeshStandardMaterial({
+        color: 0xf26522,
+        roughness: 0.38,
+        metalness: 0.45,
+      }),
+      guardOrange: new THREE.MeshStandardMaterial({
+        color: 0xff6b1a,
+        roughness: 0.35,
+        metalness: 0.35,
+      }),
+      yellowStripe: new THREE.MeshStandardMaterial({
+        color: 0xfacc15,
+        roughness: 0.6,
+        metalness: 0.05,
+      }),
+      aisleLaneTint: new THREE.MeshStandardMaterial({
+        color: 0x0ea5e9,
+        transparent: true,
+        opacity: 0.06,
+        roughness: 0.9,
+      }),
+      aisle3LaneTint: new THREE.MeshStandardMaterial({
+        color: 0xf97316,
+        transparent: true,
+        opacity: 0.08,
+        roughness: 0.9,
+      }),
+      woodPallet: new THREE.MeshStandardMaterial({
+        color: 0xc89d66,
+        roughness: 0.85,
+        metalness: 0.02,
+      }),
+      cargoBox: new THREE.MeshStandardMaterial({
+        map: createCardboardBoxTexture(),
+        roughness: 0.72,
+        metalness: 0.04,
+      }),
+      stretchFilm: new THREE.MeshPhysicalMaterial({
+        color: 0xe2e8f0,
+        transparent: true,
+        opacity: 0.24,
+        roughness: 0.15,
+        metalness: 0.0,
+        transmission: 0.15,
+      }),
+      dimLineCyan: new THREE.LineBasicMaterial({ color: 0x38bdf8 }),
+      dimLineOrange: new THREE.LineBasicMaterial({ color: 0xfb923c }),
+      dimLineGreen: new THREE.LineBasicMaterial({ color: 0x10b981 }),
+      dimLineYellow: new THREE.LineBasicMaterial({ color: 0xfacc15 }),
+    };
+
+    const floorMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(180, 180),
+      new THREE.MeshStandardMaterial({
+        map: createConcreteFloorTexture(),
+        roughness: 0.82,
+        metalness: 0.08,
+      })
+    );
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.receiveShadow = true;
+    scene.add(floorMesh);
+
+    const gridHelper = new THREE.GridHelper(120, 120, 0x334155, 0x1e293b);
+    gridHelper.position.y = 0.002;
+    scene.add(gridHelper);
+
+    const rackRootGroup = new THREE.Group();
+    const doorsRootGroup = new THREE.Group();
+    const floorMarkingsGroup = new THREE.Group();
+    const dimensions3DGroup = new THREE.Group();
+    scene.add(rackRootGroup, doorsRootGroup, floorMarkingsGroup, dimensions3DGroup);
+
+    // =========================================================================
+    // 4. FÁBRICA DE COMPONENTES ESTRUCTURALES 3D Y 3 PUERTAS VERTICALES
+    // =========================================================================
+    function calculateRowTotalLength(numBays, beamLength) {
+      if (numBays <= 0) return 0;
+      return numBays * beamLength + (numBays + 1) * UPRIGHT_WIDTH;
+    }
+
+    function createUprightFrame(height, depth) {
+      const group = new THREE.Group();
+      const postGeo = new THREE.BoxGeometry(UPRIGHT_WIDTH, height, 0.085);
+      const basePlateGeo = new THREE.BoxGeometry(0.15, 0.014, 0.15);
+
+      const zOffset = depth / 2 - 0.0425;
+      [-zOffset, zOffset].forEach((zPos) => {
+        const post = new THREE.Mesh(postGeo, materials.uprightBlue);
+        post.position.set(0, height / 2, zPos);
+        post.castShadow = true;
+        post.receiveShadow = true;
+        group.add(post);
+
+        const basePlate = new THREE.Mesh(basePlateGeo, materials.galvanizedSteel);
+        basePlate.position.set(0, 0.007, zPos);
+        group.add(basePlate);
+      });
+
+      const panelStep = 0.65;
+      const numPanels = Math.max(2, Math.floor((height - 0.25) / panelStep));
+      const actualStep = (height - 0.25) / numPanels;
+      const spanZ = depth - 0.085;
+
+      const horizGeo = new THREE.BoxGeometry(0.032, 0.032, spanZ);
+      const diagLen = Math.hypot(spanZ, actualStep);
+      const diagAngle = Math.atan2(actualStep, spanZ);
+      const diagGeo = new THREE.BoxGeometry(0.028, 0.028, diagLen);
+
+      for (let i = 0; i <= numPanels; i++) {
+        const yH = 0.15 + i * actualStep;
+        if (i === 0 || i === numPanels) {
+          const hBrace = new THREE.Mesh(horizGeo, materials.galvanizedSteel);
+          hBrace.position.set(0, yH, 0);
+          group.add(hBrace);
+        }
+        if (i < numPanels) {
+          const diag = new THREE.Mesh(diagGeo, materials.galvanizedSteel);
+          diag.position.set(0, yH + actualStep / 2, 0);
+          diag.rotation.x = i % 2 === 0 ? diagAngle : -diagAngle;
+          group.add(diag);
+        }
+      }
+
+      return group;
+    }
+
+    function createBeamPair(beamLength, beamHeight, rackDepth, yTopSurface) {
+      const group = new THREE.Group();
+      const beamThick = 0.05;
+      const beamGeo = new THREE.BoxGeometry(beamLength, beamHeight, beamThick);
+      const connectorGeo = new THREE.BoxGeometry(0.045, beamHeight + 0.055, 0.068);
+
+      const zOffset = rackDepth / 2 - beamThick / 2;
+      const yCenter = yTopSurface - beamHeight / 2;
+
+      [-zOffset, zOffset].forEach((zPos) => {
+        const beam = new THREE.Mesh(beamGeo, materials.beamOrange);
+        beam.position.set(0, yCenter, zPos);
+        beam.castShadow = true;
+        beam.receiveShadow = true;
+        group.add(beam);
+
+        [-beamLength / 2 + 0.02, beamLength / 2 - 0.02].forEach((xEnd) => {
+          const conn = new THREE.Mesh(connectorGeo, materials.beamOrange);
+          conn.position.set(xEnd, yCenter, zPos);
+          group.add(conn);
+        });
+      });
+
+      return group;
+    }
+
+    function createDepthTieBar(depthSpan, yTopSurface) {
+      const tie = new THREE.Mesh(
+        new THREE.BoxGeometry(0.045, 0.04, Math.max(0.12, depthSpan)),
+        materials.galvanizedSteel
+      );
+      tie.position.set(0, yTopSurface - 0.02, 0);
+      tie.castShadow = true;
+      return tie;
+    }
+
+    function createColumnProtector() {
+      const group = new THREE.Group();
+      const h = 0.42;
+      const w = 0.18;
+      const d = 0.18;
+      const t = 0.016;
+
+      const frontWall = new THREE.Mesh(new THREE.BoxGeometry(w, h, t), materials.guardOrange);
+      frontWall.position.set(0, h / 2, d / 2);
+      frontWall.castShadow = true;
+
+      const sideGeo = new THREE.BoxGeometry(t, h, d);
+      const leftWall = new THREE.Mesh(sideGeo, materials.guardOrange);
+      leftWall.position.set(-w / 2 + t / 2, h / 2, 0);
+      leftWall.castShadow = true;
+
+      const rightWall = new THREE.Mesh(sideGeo, materials.guardOrange);
+      rightWall.position.set(w / 2 - t / 2, h / 2, 0);
+      rightWall.castShadow = true;
+
+      const flange = new THREE.Mesh(new THREE.BoxGeometry(w + 0.05, 0.014, d + 0.05), materials.guardOrange);
+      flange.position.set(0, 0.007, 0);
+
+      group.add(frontWall, leftWall, rightWall, flange);
+      return group;
+    }
+
+    function createEndRowBarrier(spanDepth) {
+      const group = new THREE.Group();
+      const postH = 0.48;
+      const postGeo = new THREE.BoxGeometry(0.08, postH, 0.08);
+      const halfSpan = Math.max(0.35, spanDepth / 2 - 0.04);
+
+      [-halfSpan, halfSpan].forEach((zPos) => {
+        const post = new THREE.Mesh(postGeo, materials.guardOrange);
+        post.position.set(0, postH / 2, zPos);
+        post.castShadow = true;
+        group.add(post);
+      });
+
+      const railGeo = new THREE.CylinderGeometry(0.032, 0.032, halfSpan * 2 + 0.08, 14);
+      railGeo.rotateX(Math.PI / 2);
+
+      [0.20, 0.40].forEach((yRail) => {
+        const rail = new THREE.Mesh(railGeo, materials.guardOrange);
+        rail.position.set(0, yRail, 0);
+        rail.castShadow = true;
+        group.add(rail);
+      });
+
+      return group;
+    }
+
+    function createPalletWithLoad(netLoadHeight) {
+      const group = new THREE.Group();
+
+      const palletBase = new THREE.Mesh(
+        new THREE.BoxGeometry(PALLET_W, PALLET_DECK_H, PALLET_D),
+        materials.woodPallet
+      );
+      palletBase.position.y = PALLET_DECK_H / 2;
+      palletBase.castShadow = true;
+      palletBase.receiveShadow = true;
+      group.add(palletBase);
+
+      const cargoH = Math.max(0.30, Math.min(2.65, netLoadHeight - PALLET_DECK_H - 0.14));
+      const cargoW = PALLET_W - 0.06;
+      const cargoD = PALLET_D - 0.06;
+
+      const cargoMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(cargoW, cargoH, cargoD),
+        materials.cargoBox
+      );
+      cargoMesh.position.y = PALLET_DECK_H + cargoH / 2;
+      cargoMesh.castShadow = true;
+      cargoMesh.receiveShadow = true;
+      group.add(cargoMesh);
+
+      const filmMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(cargoW + 0.015, cargoH * 0.94, cargoD + 0.015),
+        materials.stretchFilm
+      );
+      filmMesh.position.y = PALLET_DECK_H + cargoH / 2;
+      group.add(filmMesh);
+
+      return group;
+    }
+
+    const doorMeshRefs = {};
+
+    function createOverheadRollUpDoor(aisleId, xDoor, zCenter, clearWidth, clearHeight) {
+      const group = new THREE.Group();
+      group.position.set(xDoor, 0, zCenter);
+
+      const jambW = 0.16;
+      const jambD = 0.24;
+      const jambGeo = new THREE.BoxGeometry(jambD, clearHeight + 0.45, jambW);
+
+      [-clearWidth / 2 - jambW / 2, clearWidth / 2 + jambW / 2].forEach((zJamb) => {
+        const jamb = new THREE.Mesh(jambGeo, materials.doorFrameDark);
+        jamb.position.set(0, (clearHeight + 0.45) / 2, zJamb);
+        jamb.castShadow = true;
+        jamb.receiveShadow = true;
+        group.add(jamb);
+      });
+
+      const hoodH = 0.46;
+      const hoodW = clearWidth + jambW * 2 + 0.08;
+      const hoodMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.36, hoodH, hoodW),
+        materials.doorFrameDark
+      );
+      hoodMesh.position.set(0, clearHeight + hoodH / 2, 0);
+      hoodMesh.castShadow = true;
+      group.add(hoodMesh);
+
+      // Moldura superior celeste a juego con el diseño de la puerta
+      const lintel = new THREE.Mesh(
+        new THREE.BoxGeometry(0.38, 0.08, hoodW),
+        materials.doorHeaderAccent
+      );
+      lintel.position.set(0, clearHeight + 0.04, 0);
+      group.add(lintel);
+
+      // Cortina de puerta con logotipo COSMOS Global Logistics + ACCESO / PUERTA P1/P2/P3
+      const curtainGeo = new THREE.BoxGeometry(0.05, clearHeight, clearWidth);
+      const sideEdgeMat = materials.doorFrameDark;
+      const doorMat = doorCurtainMaterials[aisleId] || doorCurtainMaterials[1];
+      // En BoxGeometry: índice 0 (+X interior), índice 1 (-X cara frontal hacia la cámara)
+      const curtainMats = [
+        doorMat,
+        doorMat,
+        sideEdgeMat,
+        sideEdgeMat,
+        sideEdgeMat,
+        sideEdgeMat,
+      ];
+
+      const curtainMesh = new THREE.Mesh(curtainGeo, curtainMats);
+      curtainMesh.castShadow = true;
+      curtainMesh.receiveShadow = true;
+      group.add(curtainMesh);
+
+      const bottomBar = new THREE.Mesh(
+        new THREE.BoxGeometry(0.09, 0.07, clearWidth + 0.02),
+        materials.doorFrameDark
+      );
+      group.add(bottomBar);
+
+      doorMeshRefs[aisleId] = {
+        curtainMesh,
+        bottomBar,
+        clearHeight,
+      };
+
+      applyDoorOpenVisual(aisleId, state.doorCurrentOpen[aisleId] ?? 0.75);
+      return group;
+    }
+
+    function applyDoorOpenVisual(aisleId, openRatio) {
+      const ref = doorMeshRefs[aisleId];
+      if (!ref) return;
+      const clamped = Math.max(0, Math.min(1, openRatio));
+      const visibleFraction = Math.max(0.03, 1 - clamped * 0.96);
+      ref.curtainMesh.scale.y = visibleFraction;
+      const currentH = ref.clearHeight * visibleFraction;
+      ref.curtainMesh.position.y = ref.clearHeight - currentH / 2;
+      ref.bottomBar.position.y = ref.clearHeight - currentH + 0.035;
+    }
+
+    // =========================================================================
+    // 5. GEOMETRÍA DE LOS 6 RACKS (P1 IZQUIERDA, P2 CENTRO, P3 DERECHA)
+    // =========================================================================
+    const aisleCenterZMap = { 1: 0, 2: 0, 3: 0 };
+    const rackCenterZMap = {};
+    let dimensionAnchors = [];
+
+    function buildSingleRackLine(rack, zCenter, frontDirection, startX, availableSlots) {
+      const numBays = getRackBays(rack);
+      if (numBays <= 0) return;
+
+      const elevations = getLevelElevations(rack);
+      const bayPitch = state.beamLength + UPRIGHT_WIDTH;
+      const is2F = rack.doubleDepth;
+
+      const lineStepZ = state.rackDepth + state.doubleDepthGap;
+      const lineZOffsets = is2F
+        ? [-frontDirection * (lineStepZ / 2), +frontDirection * (lineStepZ / 2)]
+        : [0];
+
+      lineZOffsets.forEach((zOff, depthIdx) => {
+        const zLine = zCenter + zOff;
+        const zFrontLine = zLine + frontDirection * (state.rackDepth / 2);
+
+        for (let i = 0; i <= numBays; i++) {
+          const xFrame = startX + UPRIGHT_WIDTH / 2 + i * bayPitch;
+          const frame = createUprightFrame(rack.rackHeight, state.rackDepth);
+          frame.position.set(xFrame, 0, zLine);
+          rackRootGroup.add(frame);
+
+          if (state.showGuards && depthIdx === 0) {
+            const guard = createColumnProtector();
+            guard.position.set(xFrame, 0, zFrontLine + frontDirection * 0.03);
+            if (frontDirection < 0) guard.rotation.y = Math.PI;
+            rackRootGroup.add(guard);
+          }
+        }
+      });
+
+      if (is2F) {
+        const tieSpan = state.doubleDepthGap + 0.08;
+        for (let i = 0; i <= numBays; i++) {
+          const xFrame = startX + UPRIGHT_WIDTH / 2 + i * bayPitch;
+          [0.9, rack.rackHeight - 0.35].forEach((yTie) => {
+            if (yTie > 0.3) {
+              const tie = new THREE.Mesh(
+                new THREE.BoxGeometry(0.05, 0.05, tieSpan),
+                materials.galvanizedSteel
+              );
+              tie.position.set(xFrame, yTie, zCenter);
+              rackRootGroup.add(tie);
+            }
+          });
+        }
+      }
+
+      const palletsPerBay = Math.max(1, Math.floor((state.beamLength - 0.12) / (PALLET_W + 0.08)));
+
+      for (let b = 0; b < numBays; b++) {
+        const bayNumber = b + 1;
+        const isTunnel = rack.tunnels.has(bayNumber);
+        const xBayCenter = startX + UPRIGHT_WIDTH + b * bayPitch + state.beamLength / 2;
+        const clearedLevels = isTunnel ? Math.min(rack.tunnelLevels, rack.levels - 1) : 0;
+
+        const activeLevelsInBay = [];
+        for (let lvl = 0; lvl < rack.levels; lvl++) {
+          const levelNumber = lvl + 1;
+          const tramoKey = `${bayNumber}-${levelNumber}`;
+
+          if (isTunnel && lvl < clearedLevels) {
+            activeLevelsInBay.push(false);
+            continue;
+          }
+          if (lvl >= 1 && (rack.disabledLevels.has(lvl) || rack.disabledTramos.has(tramoKey))) {
+            activeLevelsInBay.push(false);
+            continue;
+          }
+          activeLevelsInBay.push(true);
+        }
+
+        for (let lvl = 0; lvl < rack.levels; lvl++) {
+          if (!activeLevelsInBay[lvl]) continue;
+
+          const yPalletBase = elevations[lvl];
+
+          lineZOffsets.forEach((zOff) => {
+            const zLine = zCenter + zOff;
+            if (lvl >= 1) {
+              const beamPair = createBeamPair(state.beamLength, state.beamHeight, state.rackDepth, yPalletBase);
+              beamPair.position.set(xBayCenter, 0, zLine);
+              rackRootGroup.add(beamPair);
+            }
+          });
+
+          if (is2F && lvl >= 1) {
+            [-state.beamLength * 0.32, state.beamLength * 0.32].forEach((xTie) => {
+              const tieBar = createDepthTieBar(lineStepZ, yPalletBase);
+              tieBar.position.x = xBayCenter + xTie;
+              tieBar.position.z = zCenter;
+              rackRootGroup.add(tieBar);
+            });
+          }
+
+          let nextActiveLvl = -1;
+          for (let up = lvl + 1; up < rack.levels; up++) {
+            if (activeLevelsInBay[up]) {
+              nextActiveLvl = up;
+              break;
+            }
+          }
+
+          let netLoadHeight;
+          if (nextActiveLvl !== -1) {
+            netLoadHeight = Math.max(0.4, elevations[nextActiveLvl] - state.beamHeight - yPalletBase);
+          } else {
+            const topSpace = Math.max(rack.levelHeights[lvl] || 1.250, rack.rackHeight - yPalletBase);
+            netLoadHeight = Math.max(0.4, topSpace - state.beamHeight);
+          }
+
+          const totalPalletsW = palletsPerBay * PALLET_W;
+          const freeGap = Math.max(0.06, (state.beamLength - totalPalletsW) / (palletsPerBay + 1));
+
+          lineZOffsets.forEach((zOff, depthIdx) => {
+            const zPallet = zCenter + zOff;
+            for (let p = 0; p < palletsPerBay; p++) {
+              const xPallet =
+                xBayCenter - state.beamLength / 2 + freeGap + PALLET_W / 2 + p * (PALLET_W + freeGap);
+
+              availableSlots.push({
+                x: xPallet,
+                y: yPalletBase,
+                z: zPallet,
+                netLoadHeight,
+                bayIndex: b,
+                levelIndex: lvl,
+                depthIndex: depthIdx,
+                palletIndex: p,
+              });
+            }
+          });
+        }
+      }
+    }
+
+    function populatePalletsInRack(rack, slots) {
+      if (!state.showPallets || rack.palletCount <= 0 || slots.length === 0) return;
+
+      const ordered = [...slots];
+
+      if (rack.fillPattern === 'bottom-up') {
+        ordered.sort((a, b) => {
+          if (a.levelIndex !== b.levelIndex) return a.levelIndex - b.levelIndex;
+          if (a.bayIndex !== b.bayIndex) return a.bayIndex - b.bayIndex;
+          if (a.depthIndex !== b.depthIndex) return a.depthIndex - b.depthIndex;
+          return a.palletIndex - b.palletIndex;
+        });
+      } else if (rack.fillPattern === 'random') {
+        let seed = rack.randomSeed || 42;
+        const nextRand = () => {
+          seed = (seed * 1664525 + 1013904223) % 4294967296;
+          return seed / 4294967296;
+        };
+        for (let i = ordered.length - 1; i > 0; i--) {
+          const j = Math.floor(nextRand() * (i + 1));
+          [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+        }
+      }
+
+      const countToPlace = Math.min(rack.palletCount, ordered.length);
+      for (let i = 0; i < countToPlace; i++) {
+        const slot = ordered[i];
+        const pallet = createPalletWithLoad(slot.netLoadHeight);
+        pallet.position.set(slot.x, slot.y, slot.z);
+        rackRootGroup.add(pallet);
+      }
+    }
+
+    function addBackToBackSpacers(rackLeft, zLeftFront, rackRight, zRightFront, startX) {
+      const minBays = Math.min(getRackBays(rackLeft), getRackBays(rackRight));
+      const minH = Math.min(rackLeft.rackHeight, rackRight.rackHeight);
+      const bayPitch = state.beamLength + UPRIGHT_WIDTH;
+      const zMid = (zLeftFront + zRightFront) / 2;
+      const spacerGeo = new THREE.BoxGeometry(0.055, 0.055, state.backToBackSpacer);
+
+      for (let i = 0; i <= minBays; i++) {
+        const xF = startX + UPRIGHT_WIDTH / 2 + i * bayPitch;
+        [0.85, minH - 0.45].forEach((ySp) => {
+          if (ySp > 0.3) {
+            const sp = new THREE.Mesh(spacerGeo, materials.galvanizedSteel);
+            sp.position.set(xF, ySp, zMid);
+            rackRootGroup.add(sp);
+          }
+        });
+      }
+    }
+
+    function addFloorSafetyPerimeter(startX, totalLen, zMin, zMax) {
+      const pad = 0.16;
+      const lineW = 0.07;
+      const x1 = startX - pad;
+      const x2 = startX + totalLen + pad;
+      const z1 = zMin - pad;
+      const z2 = zMax + pad;
+      const w = x2 - x1;
+      const d = z2 - z1;
+      const cx = (x1 + x2) / 2;
+      const cz = (z1 + z2) / 2;
+
+      const strips = [
+        { w, d: lineW, x: cx, z: z1 },
+        { w, d: lineW, x: cx, z: z2 },
+        { w: lineW, d, x: x1, z: cz },
+        { w: lineW, d, x: x2, z: cz },
+      ];
+
+      strips.forEach((s) => {
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(s.w, s.d), materials.yellowStripe);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(s.x, 0.004, s.z);
+        floorMarkingsGroup.add(mesh);
+      });
+    }
+
+    function drawDimensionLine(p1, p2, material, text, cssClass = 'dim-label', offsetLabel = new THREE.Vector3()) {
+      const points = [p1, p2];
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      dimensions3DGroup.add(new THREE.Line(geo, material));
+
+      const dir = new THREE.Vector3().subVectors(p2, p1).normalize();
+      const perp = Math.abs(dir.y) > 0.9 ? new THREE.Vector3(0.14, 0, 0) : new THREE.Vector3(0, 0.14, 0);
+
+      [p1, p2].forEach((pt) => {
+        const tickGeo = new THREE.BufferGeometry().setFromPoints([
+          pt.clone().sub(perp),
+          pt.clone().add(perp),
+        ]);
+        dimensions3DGroup.add(new THREE.Line(tickGeo, material));
+      });
+
+      const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5).add(offsetLabel);
+      dimensionAnchors.push({ position: mid, text, cssClass });
+    }
+
+    function rebuildScene() {
+      rackRootGroup.clear();
+      doorsRootGroup.clear();
+      floorMarkingsGroup.clear();
+      dimensions3DGroup.clear();
+      dimensionAnchors = [];
+
+      const lenA = calculateRowTotalLength(state.baysA, state.beamLength);
+      const lenB = calculateRowTotalLength(state.baysB, state.beamLength);
+      const maxLen = Math.max(lenA, lenB, 4);
+      const startX = -maxLen / 2;
+      const sep = state.backToBackSpacer;
+      const w1 = state.aisleWidths[1];
+      const w2 = state.aisleWidths[2];
+      const w3 = state.aisleWidths[3];
+
+      const fp1A = getRackFootprintDepth(state.racks['1A']);
+      const fp1B = getRackFootprintDepth(state.racks['1B']);
+      const fp2A = getRackFootprintDepth(state.racks['2A']);
+      const fp2B = getRackFootprintDepth(state.racks['2B']);
+      const fp3A = getRackFootprintDepth(state.racks['3A']);
+      const fp3B = getRackFootprintDepth(state.racks['3B']);
+
+      aisleCenterZMap[2] = 0;
+
+      rackCenterZMap['2A'] = -(w2 / 2 + fp2A / 2);
+      rackCenterZMap['2B'] = +(w2 / 2 + fp2B / 2);
+
+      const z2ALeftEdge = rackCenterZMap['2A'] - fp2A / 2;
+      rackCenterZMap['1B'] = z2ALeftEdge - sep - fp1B / 2;
+      const z1BLeftEdge = rackCenterZMap['1B'] - fp1B / 2;
+      aisleCenterZMap[1] = z1BLeftEdge - w1 / 2;
+      rackCenterZMap['1A'] = aisleCenterZMap[1] - w1 / 2 - fp1A / 2;
+
+      const z2BRightEdge = rackCenterZMap['2B'] + fp2B / 2;
+      rackCenterZMap['3A'] = z2BRightEdge + sep + fp3A / 2;
+      const z3ARightEdge = rackCenterZMap['3A'] + fp3A / 2;
+      aisleCenterZMap[3] = z3ARightEdge + w3 / 2;
+      rackCenterZMap['3B'] = aisleCenterZMap[3] + w3 / 2 + fp3B / 2;
+
+      const rackActualMaxSlots = {};
+      const refRack = getReferenceRack();
+
+      RACK_IDS.forEach((rId) => {
+        const rack = state.racks[rId];
+        const zC = rackCenterZMap[rId];
+        const frontDir = rack.side === 'A' ? 1 : -1;
+        const slots = [];
+
+        buildSingleRackLine(rack, zC, frontDir, startX, slots);
+
+        rackActualMaxSlots[rId] = slots.length;
+        if (rack.palletCount > slots.length) {
+          rack.palletCount = slots.length;
+        }
+        populatePalletsInRack(rack, slots);
+
+        if (state.showDimensions) {
+          const tags = [];
+          if (rack.doubleDepth) tags.push('2F');
+          if (rack.disabledLevels.size > 0) tags.push('2X');
+          const tagSuffix = tags.length > 0 ? ` · ${tags.join('+')}` : '';
+          dimensionAnchors.push({
+            position: new THREE.Vector3(startX + maxLen + 0.45, rack.rackHeight + 0.18, zC),
+            text: `RACK ${rId} (${rack.rackHeight.toFixed(2)}m${tagSuffix})`,
+            cssClass: rId === refRack.id ? 'dim-label rack-tag active-rack' : 'dim-label rack-tag',
+          });
+        }
+      });
+
+      addBackToBackSpacers(state.racks['1B'], z2ALeftEdge, state.racks['2A'], z2ALeftEdge, startX);
+      addBackToBackSpacers(state.racks['2B'], z2BRightEdge, state.racks['3A'], z2BRightEdge, startX);
+
+      // Bloque 1 (Izquierda): Rack 1A
+      addFloorSafetyPerimeter(startX, lenA, rackCenterZMap['1A'] - fp1A / 2, rackCenterZMap['1A'] + fp1A / 2);
+      if (state.showGuards) {
+        const b1L = createEndRowBarrier(fp1A);
+        b1L.position.set(startX - 0.24, 0, rackCenterZMap['1A']);
+        const b1R = createEndRowBarrier(fp1A);
+        b1R.position.set(startX + lenA + 0.24, 0, rackCenterZMap['1A']);
+        rackRootGroup.add(b1L, b1R);
+      }
+
+      // Bloque 2 (Entre P1 y P2): Par espalda-espalda Rack 1B + Rack 2A
+      const maxLenPair1 = Math.max(lenB, lenA);
+      const zPair1Min = rackCenterZMap['1B'] - fp1B / 2;
+      const zPair1Max = rackCenterZMap['2A'] + fp2A / 2;
+      const zPair1Mid = (zPair1Min + zPair1Max) / 2;
+      addFloorSafetyPerimeter(startX, maxLenPair1, zPair1Min, zPair1Max);
+      if (state.showGuards) {
+        const b2L = createEndRowBarrier(zPair1Max - zPair1Min);
+        b2L.position.set(startX - 0.24, 0, zPair1Mid);
+        const b2R = createEndRowBarrier(zPair1Max - zPair1Min);
+        b2R.position.set(startX + maxLenPair1 + 0.24, 0, zPair1Mid);
+        rackRootGroup.add(b2L, b2R);
+      }
+
+      // Bloque 3 (Entre P2 y P3): Par espalda-espalda Rack 2B + Rack 3A
+      const zPair2Min = rackCenterZMap['2B'] - fp2B / 2;
+      const zPair2Max = rackCenterZMap['3A'] + fp3A / 2;
+      const zPair2Mid = (zPair2Min + zPair2Max) / 2;
+      addFloorSafetyPerimeter(startX, maxLenPair1, zPair2Min, zPair2Max);
+      if (state.showGuards) {
+        const b3L = createEndRowBarrier(zPair2Max - zPair2Min);
+        b3L.position.set(startX - 0.24, 0, zPair2Mid);
+        const b3R = createEndRowBarrier(zPair2Max - zPair2Min);
+        b3R.position.set(startX + maxLenPair1 + 0.24, 0, zPair2Mid);
+        rackRootGroup.add(b3L, b3R);
+      }
+
+      // Bloque 4 (Derecha): Rack 3B
+      addFloorSafetyPerimeter(startX, lenB, rackCenterZMap['3B'] - fp3B / 2, rackCenterZMap['3B'] + fp3B / 2);
+      if (state.showGuards) {
+        const b4L = createEndRowBarrier(fp3B);
+        b4L.position.set(startX - 0.24, 0, rackCenterZMap['3B']);
+        const b4R = createEndRowBarrier(fp3B);
+        b4R.position.set(startX + lenB + 0.24, 0, rackCenterZMap['3B']);
+        rackRootGroup.add(b4L, b4R);
+      }
+
+      // 3 Puertas Enrollables Verticales con logotipo COSMOS y P1, P2, P3 (independientes de las cotas)
+      const xDoorLine = startX - 1.15;
+      const doorHeight = 4.65;
+
+      if (state.showDoors) {
+        const zWallMin = rackCenterZMap['1A'] - fp1A / 2 - 0.6;
+        const zWallMax = rackCenterZMap['3B'] + fp3B / 2 + 0.6;
+        const wallBeamTop = new THREE.Mesh(
+          new THREE.BoxGeometry(0.26, 0.42, zWallMax - zWallMin),
+          materials.doorFrameDark
+        );
+        wallBeamTop.position.set(xDoorLine, doorHeight + 0.62, (zWallMin + zWallMax) / 2);
+        wallBeamTop.castShadow = true;
+        doorsRootGroup.add(wallBeamTop);
+      }
+
+      [
+        { id: 1, title: 'PASILLO 1 (IZQ)', w: w1 },
+        { id: 2, title: 'PASILLO 2 (CENTRO)', w: w2 },
+        { id: 3, title: 'PASILLO 3 (DER)', w: w3 },
+      ].forEach((p) => {
+        const zAisle = aisleCenterZMap[p.id];
+        const laneMesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(maxLen + 1.6, p.w),
+          p.id === 3 ? materials.aisle3LaneTint : materials.aisleLaneTint
+        );
+        laneMesh.rotation.x = -Math.PI / 2;
+        laneMesh.position.set(-0.3, 0.003, zAisle);
+        floorMarkingsGroup.add(laneMesh);
+
+        if (state.showDoors) {
+          const doorObj = createOverheadRollUpDoor(p.id, xDoorLine, zAisle, p.w, doorHeight);
+          doorsRootGroup.add(doorObj);
+        }
+
+        if (state.showDimensions) {
+          dimensionAnchors.push({
+            position: new THREE.Vector3(startX + maxLen * 0.5, 0.35, zAisle),
+            text: `${p.title} (${p.w.toFixed(2)}m)`,
+            cssClass: p.id === 3 ? 'dim-label aisle-banner aisle-3' : 'dim-label aisle-banner',
+          });
+        }
+      });
+
+      if (state.showDimensions) {
+        const zRefC = rackCenterZMap[refRack.id];
+        const refFp = getRackFootprintDepth(refRack);
+        const frontDir = refRack.side === 'A' ? 1 : -1;
+        const zFrontFace = zRefC + frontDir * (refFp / 2 + 0.08);
+        const elevations = getLevelElevations(refRack);
+        const bayPitch = state.beamLength + UPRIGHT_WIDTH;
+        const numBays = getRackBays(refRack);
+        const rowLen = calculateRowTotalLength(numBays, state.beamLength);
+        const xRightEdge = startX + rowLen + 0.35;
+
+        drawDimensionLine(
+          new THREE.Vector3(xRightEdge, 0, zFrontFace),
+          new THREE.Vector3(xRightEdge, refRack.rackHeight, zFrontFace),
+          materials.dimLineCyan,
+          `H ${refRack.id}: ${refRack.rackHeight.toFixed(2)} m`,
+          'dim-label',
+          new THREE.Vector3(0.75, 0, 0)
+        );
+
+        for (let lvl = 1; lvl < refRack.levels; lvl++) {
+          const yLvl = elevations[lvl];
+          const xTick = startX + rowLen - UPRIGHT_WIDTH - 0.15;
+          drawDimensionLine(
+            new THREE.Vector3(xTick, 0, zFrontFace),
+            new THREE.Vector3(xTick, yLvl, zFrontFace),
+            materials.dimLineOrange,
+            `N${lvl + 1}: ${yLvl.toFixed(3)} m`,
+            'dim-label level',
+            new THREE.Vector3(-0.72, yLvl / 2 - 0.12, 0)
+          );
+        }
+
+        drawDimensionLine(
+          new THREE.Vector3(startX, refRack.rackHeight + 0.42, zFrontFace),
+          new THREE.Vector3(startX + rowLen, refRack.rackHeight + 0.42, zFrontFace),
+          materials.dimLineYellow,
+          `Rack ${refRack.id} (${numBays} bahías): ${rowLen.toFixed(2)} m`,
+          'dim-label row-total',
+          new THREE.Vector3(0, 0.28, 0)
+        );
+
+        const tunnelClearH = getTunnelClearHeight(refRack);
+        refRack.tunnels.forEach((bayNum) => {
+          if (bayNum <= numBays) {
+            const xTun = startX + UPRIGHT_WIDTH + (bayNum - 1) * bayPitch + state.beamLength / 2;
+            drawDimensionLine(
+              new THREE.Vector3(xTun, 0, zFrontFace),
+              new THREE.Vector3(xTun, tunnelClearH, zFrontFace),
+              materials.dimLineGreen,
+              `Túnel ${refRack.id}-B${bayNum}: ${tunnelClearH.toFixed(3)} m`,
+              'dim-label tunnel',
+              new THREE.Vector3(0, 0, frontDir * 0.16)
+            );
+          }
+        });
+      }
+
+      updateMetricsAndValidations(lenA, lenB, rackActualMaxSlots);
+      syncDimensionDOMElements();
+      autoSaveLocalState();
+      updateResponsiveLayout();
+    }
+
+    // =========================================================================
+    // 6. VALIDACIONES NORMATIVAS, KPIs Y CONTROLES DINÁMICOS
+    // =========================================================================
+    function setAlertBadge(el, status, text) {
+      const dot = el.querySelector('span:first-child');
+      const label = el.querySelector('span:last-child');
+      label.textContent = text;
+
+      el.className = 'flex items-center gap-1.5 text-[10.5px] px-2 py-0.5 rounded-md border font-medium ';
+      dot.className = 'w-1.5 h-1.5 rounded-full ';
+
+      if (status === 'ok') {
+        el.className += 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300';
+        dot.className += 'bg-emerald-400';
+      } else if (status === 'warn') {
+        el.className += 'bg-amber-950/70 border-amber-500/40 text-amber-300';
+        dot.className += 'bg-amber-400';
+      } else {
+        el.className += 'bg-rose-950/80 border-rose-500/50 text-rose-300';
+        dot.className += 'bg-rose-500 animate-ping';
+      }
+    }
+
+    function updateMetricsAndValidations(lenA, lenB, rackActualMaxSlots) {
+      const refRack = getReferenceRack();
+      const elevations = getLevelElevations(refRack);
+      const topBeamY = elevations[elevations.length - 1];
+      const topMargin = refRack.rackHeight - topBeamY;
+
+      const netClearances = [];
+      for (let i = 0; i < refRack.levels - 1; i++) {
+        netClearances.push((refRack.levelHeights[i] || 1.250) - state.beamHeight);
+      }
+      const minNetClearance = netClearances.length > 0 ? Math.min(...netClearances) : 1.150;
+      const maxNetClearance = netClearances.length > 0 ? Math.max(...netClearances) : 1.150;
+
+      for (let i = 0; i < refRack.levels - 1; i++) {
+        const badgeEl = document.getElementById(`lvl-summary-${i}`);
+        if (badgeEl) {
+          const yTop = elevations[i + 1];
+          const netH = (refRack.levelHeights[i] || 1.250) - state.beamHeight;
+          badgeEl.textContent = `Cota N${i + 2}: ${yTop.toFixed(2)}m | Luz: ${netH.toFixed(2)}m`;
+        }
+      }
+
+      document.getElementById('calc-top-beam').textContent = `${topBeamY.toFixed(3)} m`;
+      document.getElementById('calc-top-margin').textContent = `${topMargin.toFixed(3)} m`;
+      document.getElementById('calc-net-clearance').textContent =
+        Math.abs(maxNetClearance - minNetClearance) < 0.001
+          ? `${minNetClearance.toFixed(3)} m`
+          : `${minNetClearance.toFixed(2)} – ${maxNetClearance.toFixed(2)} m`;
+
+      const clearedLevels = Math.min(refRack.tunnelLevels, refRack.levels - 1);
+      const tunnelClearH = getTunnelClearHeight(refRack);
+      document.getElementById('tunnel-levels-badge').textContent =
+        clearedLevels === 1 ? 'Libera N1' : `Libera N1–N${clearedLevels}`;
+      document.getElementById('tunnel-clear-height-preview').textContent =
+        `Altura libre: ${tunnelClearH.toFixed(3)} m`;
+
+      let totalSlotsAll = 0;
+      let totalPlacedAll = 0;
+      let count2FRacks = 0;
+      const aisleStats = { 1: { p: 0, m: 0 }, 2: { p: 0, m: 0 }, 3: { p: 0, m: 0 } };
+
+      RACK_IDS.forEach((id) => {
+        const r = state.racks[id];
+        if (r.doubleDepth) count2FRacks++;
+        const maxS = rackActualMaxSlots[id] || 0;
+        const placedS = state.showPallets ? r.palletCount : 0;
+        totalSlotsAll += maxS;
+        totalPlacedAll += placedS;
+        aisleStats[r.aisleId].p += placedS;
+        aisleStats[r.aisleId].m += maxS;
+      });
+
+      document.getElementById('badge-2f-count').textContent = `${count2FRacks}/6 en 2F`;
+
+      const pctAll = totalSlotsAll > 0 ? (totalPlacedAll / totalSlotsAll) * 100 : 0;
+      document.getElementById('kpi-placed-pallets').textContent = totalPlacedAll;
+      document.getElementById('kpi-total-pallets').textContent = totalSlotsAll;
+      document.getElementById('kpi-occupancy-pct').textContent = `${pctAll.toFixed(1)}%`;
+      document.getElementById('kpi-deductions-summary').textContent =
+        `P1:${aisleStats[1].p}/${aisleStats[1].m} · P2:${aisleStats[2].p}/${aisleStats[2].m} · P3:${aisleStats[3].p}/${aisleStats[3].m}`;
+
+      const targetRacks = getTargetRacks();
+      const targetMax = targetRacks.reduce((acc, r) => acc + (rackActualMaxSlots[r.id] || 0), 0);
+      const targetPlaced = targetRacks.reduce((acc, r) => acc + (state.showPallets ? r.palletCount : 0), 0);
+      const targetPct = targetMax > 0 ? (targetPlaced / targetMax) * 100 : 0;
+
+      const sliderPallet = document.getElementById('slider-pallet-count');
+      const inpPallet = document.getElementById('inp-pallet-count');
+      sliderPallet.max = targetMax;
+      inpPallet.max = targetMax;
+      sliderPallet.value = targetPlaced;
+      inpPallet.value = targetPlaced;
+
+      const scopeName = getScopeDisplayName();
+      document.getElementById('occupancy-target-title').textContent = `Pallets en ${scopeName}:`;
+      document.getElementById('sidebar-occupancy-label').textContent =
+        `${targetPlaced} / ${targetMax} (${targetPct.toFixed(1)}%)`;
+
+      document.getElementById('kpi-len-a').textContent = lenA.toFixed(2);
+      document.getElementById('kpi-len-b').textContent = lenB.toFixed(2);
+      document.getElementById('kpi-aisle-widths').textContent =
+        `P1:${state.aisleWidths[1].toFixed(2)}m · P2:${state.aisleWidths[2].toFixed(2)}m · P3:${state.aisleWidths[3].toFixed(2)}m · 2F:${count2FRacks}/6`;
+
+      const elTopAlert = document.getElementById('alert-top-clearance');
+      if (topMargin < 0) {
+        setAlertBadge(elTopAlert, 'err', `Error ${refRack.id}: Excede bastidor (${topMargin.toFixed(2)} m)`);
+      } else if (topMargin < 0.25) {
+        setAlertBadge(elTopAlert, 'warn', `Resguardo ${refRack.id}: ${topMargin.toFixed(3)} m (< 0.25 m)`);
+      } else {
+        setAlertBadge(elTopAlert, 'ok', `Resguardo ${refRack.id}: ${topMargin.toFixed(3)} m`);
+      }
+
+      const elBeamAlert = document.getElementById('alert-beam-clearance');
+      if (minNetClearance < 1.0) {
+        setAlertBadge(elBeamAlert, 'warn', `Luz Libre ${refRack.id}: ${minNetClearance.toFixed(3)} m (< 1.00 m)`);
+      } else {
+        setAlertBadge(elBeamAlert, 'ok', `Luz Libre ${refRack.id}: ${minNetClearance.toFixed(3)} m`);
+      }
+
+      const totalTunnels = targetRacks.reduce((acc, r) => acc + r.tunnels.size, 0);
+      const elTunnelAlert = document.getElementById('alert-tunnel-clearance');
+      if (totalTunnels > 0) {
+        elTunnelAlert.classList.remove('hidden');
+        if (tunnelClearH < 2.20) {
+          setAlertBadge(elTunnelAlert, 'warn', `Túnel ${refRack.id}: ${tunnelClearH.toFixed(3)} m (Bajo)`);
+        } else {
+          setAlertBadge(elTunnelAlert, 'ok', `Túnel ${refRack.id}: ${tunnelClearH.toFixed(3)} m`);
+        }
+      } else {
+        elTunnelAlert.classList.add('hidden');
+      }
+    }
+
+    function getScopeDisplayName() {
+      if (state.activeScope === 'all') return 'Todos (6 Racks)';
+      if (state.activeScope.startsWith('aisle:')) {
+        return `Pasillo ${state.activeScope.split(':')[1]}`;
+      }
+      return `Rack ${state.activeScope.split(':')[1]}`;
+    }
+
+    // =========================================================================
+    // 7. ETIQUETAS 2D PROYECTADAS SOBRE EL CANVAS
+    // =========================================================================
+    const overlayContainer = document.getElementById('dimensions-overlay');
+    let labelDOMPool = [];
+    let isCleanView = false;
+
+    function syncDimensionDOMElements() {
+      overlayContainer.innerHTML = '';
+      labelDOMPool = [];
+      if (!state.showDimensions || isCleanView) return;
+
+      dimensionAnchors.forEach((anchor) => {
+        const div = document.createElement('div');
+        div.className = anchor.cssClass;
+        div.textContent = anchor.text;
+        overlayContainer.appendChild(div);
+        labelDOMPool.push({ el: div, position: anchor.position });
+      });
+    }
+
+    const tempVec = new THREE.Vector3();
+    function updateProjectedLabels() {
+      if (!state.showDimensions || isCleanView || labelDOMPool.length === 0) return;
+
+      const halfW = window.innerWidth / 2;
+      const halfH = window.innerHeight / 2;
+
+      for (let i = 0; i < labelDOMPool.length; i++) {
+        const item = labelDOMPool[i];
+        tempVec.copy(item.position).project(camera);
+
+        if (tempVec.z > 1) {
+          item.el.style.display = 'none';
+        } else {
+          item.el.style.display = 'block';
+          const x = tempVec.x * halfW + halfW;
+          const y = -tempVec.y * halfH + halfH;
+          item.el.style.left = `${x}px`;
+          item.el.style.top = `${y}px`;
+        }
+      }
+    }
+
+    // =========================================================================
+    // 8. RENDERIZADO DE CONTROLES DINÁMICOS Y SINCRONIZACIÓN DE UI
+    // =========================================================================
+    function syncGlobalInputsFromState() {
+      document.getElementById('inp-beam-length').value = state.beamLength;
+      document.getElementById('inp-beam-height').value = state.beamHeight;
+      document.getElementById('inp-rack-depth').value = state.rackDepth;
+      document.getElementById('inp-double-depth-gap').value = state.doubleDepthGap;
+      document.getElementById('inp-back-spacer').value = state.backToBackSpacer;
+      document.getElementById('inp-bays-a').value = state.baysA;
+      document.getElementById('inp-bays-b').value = state.baysB;
+      document.getElementById('inp-aisle-1').value = state.aisleWidths[1];
+      document.getElementById('inp-aisle-2').value = state.aisleWidths[2];
+      document.getElementById('inp-aisle-3').value = state.aisleWidths[3];
+      document.getElementById('chk-doors').checked = state.showDoors;
+      document.getElementById('chk-pallets').checked = state.showPallets;
+      document.getElementById('pallet-occupancy-controls').style.opacity = state.showPallets ? '1' : '0.45';
+      document.getElementById('chk-dimensions').checked = state.showDimensions;
+      document.getElementById('chk-guards').checked = state.showGuards;
+    }
+
+    function renderIndividualDoorsUI() {
+      const grid = document.getElementById('individual-doors-grid');
+      grid.innerHTML = '';
+
+      [1, 2, 3].forEach((aisleId) => {
+        const pct = Math.round((state.doorTargetOpen[aisleId] ?? 0.75) * 100);
+        const isOpen = pct >= 50;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = isOpen
+          ? 'py-1.5 px-2 rounded-lg font-mono-tech text-[10.5px] font-bold bg-amber-600/85 text-white border border-amber-300 flex items-center justify-between transition'
+          : 'py-1.5 px-2 rounded-lg font-mono-tech text-[10.5px] font-semibold bg-slate-900 text-slate-300 border border-slate-700 hover:border-amber-400 flex items-center justify-between transition';
+
+        btn.innerHTML = `<span>P${aisleId}</span><span>${pct}% ↑</span>`;
+        btn.onclick = () => {
+          state.doorTargetOpen[aisleId] = isOpen ? 0 : 1;
+          renderIndividualDoorsUI();
+          rebuildScene();
+          showToast(`Puerta Pasillo ${aisleId} ${isOpen ? 'cerrada (0%)' : 'abierta hacia arriba (100%)'}`);
+        };
+        grid.appendChild(btn);
+      });
+
+      const avgPct = Math.round(
+        ((state.doorTargetOpen[1] + state.doorTargetOpen[2] + state.doorTargetOpen[3]) / 3) * 100
+      );
+      document.getElementById('doors-status-badge').textContent = `Apertura: ${avgPct}%`;
+      document.getElementById('lbl-door-open-pct').textContent = `${avgPct}%`;
+      document.getElementById('slider-door-open').value = avgPct;
+    }
+
+    function renderIndividualLevelInputs() {
+      const refRack = getReferenceRack();
+      const container = document.getElementById('individual-levels-container');
+      container.innerHTML = '';
+
+      for (let i = 0; i < refRack.levels - 1; i++) {
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between gap-2 bg-slate-900/90 border border-slate-800/90 rounded-lg px-2 py-1';
+
+        const leftInfo = document.createElement('div');
+        leftInfo.className = 'flex flex-col';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'text-[11px] font-semibold text-slate-200';
+        titleSpan.textContent = i === 0 ? 'Nivel 1 (Piso → N2)' : `Nivel ${i + 1} (N${i + 1} → N${i + 2})`;
+
+        const summarySpan = document.createElement('span');
+        summarySpan.id = `lvl-summary-${i}`;
+        summarySpan.className = 'text-[9.5px] font-mono-tech text-slate-400';
+
+        leftInfo.appendChild(titleSpan);
+        leftInfo.appendChild(summarySpan);
+
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.step = '0.005';
+        inp.min = '0.60';
+        inp.max = '4.00';
+        inp.value = (refRack.levelHeights[i] || 1.250).toFixed(3);
+        inp.className =
+          'w-20 bg-slate-800 border border-slate-700 focus:border-sky-500 rounded-md px-2 py-1 font-mono-tech text-right text-white text-[11px] outline-none';
+
+        inp.addEventListener('input', () => {
+          const val = parseFloat(inp.value);
+          if (isNaN(val)) return;
+          const clamped = Math.max(0.50, Math.min(4.50, val));
+          getTargetRacks().forEach((r) => {
+            r.levelHeights[i] = clamped;
+          });
+          rebuildScene();
+        });
+
+        row.appendChild(leftInfo);
+        row.appendChild(inp);
+        container.appendChild(row);
+      }
+    }
+
+    function renderDoubleDepthRacksUI() {
+      const grid = document.getElementById('double-depth-racks-grid');
+      grid.innerHTML = '';
+
+      RACK_IDS.forEach((rId) => {
+        const rack = state.racks[rId];
+        const is2F = rack.doubleDepth;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = is2F
+          ? 'py-1.5 px-2 rounded-lg font-mono-tech text-[11px] font-bold bg-sky-600/90 text-white border border-sky-300 shadow-md flex items-center justify-between transition'
+          : 'py-1.5 px-2 rounded-lg font-mono-tech text-[11px] font-semibold bg-slate-900 text-slate-300 border border-slate-700 hover:border-sky-500/60 flex items-center justify-between transition';
+
+        const checkIcon = is2F ? '☑' : '☐';
+        btn.innerHTML = `
+          <span class="flex items-center gap-1">
+            <span class="text-xs">${checkIcon}</span>
+            <span>${rId}</span>
+          </span>
+          <span class="text-[9.5px] px-1.5 py-0.5 rounded ${is2F ? 'bg-slate-950/50 text-sky-100' : 'bg-slate-800 text-slate-400'}">
+            ${is2F ? '2F' : '1F'}
+          </span>
+        `;
+
+        btn.onclick = () => {
+          rack.doubleDepth = !rack.doubleDepth;
+          state.activeScope = `rack:${rId}`;
+          refreshScopeUI();
+          showToast(`Rack ${rId} cambiado a ${rack.doubleDepth ? 'Doble Profundidad (2F)' : 'Simple Profundidad (1F)'}`);
+        };
+        grid.appendChild(btn);
+      });
+    }
+
+    function renderDoubleLevelRacksUI() {
+      const grid = document.getElementById('double-level-racks-grid');
+      grid.innerHTML = '';
+
+      RACK_IDS.forEach((rId) => {
+        const rack = state.racks[rId];
+        const hasDoubleLevel = rack.disabledLevels.size > 0;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = hasDoubleLevel
+          ? 'py-1.5 px-2 rounded-lg font-mono-tech text-[11px] font-bold bg-orange-600/90 text-white border border-orange-400 shadow flex items-center justify-between transition'
+          : 'py-1.5 px-2 rounded-lg font-mono-tech text-[11px] font-semibold bg-slate-900 text-slate-300 border border-slate-700 hover:border-slate-500 flex items-center justify-between transition';
+
+        btn.innerHTML = `<span>Rack ${rId}</span><span class="text-[9.5px] px-1 rounded ${hasDoubleLevel ? 'bg-black/30 text-orange-100' : 'bg-slate-800 text-slate-400'}">${hasDoubleLevel ? '2X ON' : 'Normal'}</span>`;
+
+        btn.onclick = () => {
+          if (hasDoubleLevel) {
+            rack.disabledLevels.clear();
+          } else {
+            rack.disabledLevels.add(1);
+          }
+          state.activeScope = `rack:${rId}`;
+          refreshScopeUI();
+        };
+        grid.appendChild(btn);
+      });
+
+      const refRack = getReferenceRack();
+      document.getElementById('lbl-beam-target-rack').textContent = getScopeDisplayName();
+      const lvlContainer = document.getElementById('global-beam-levels-container');
+      lvlContainer.innerHTML = '';
+
+      for (let lvl = 1; lvl < refRack.levels; lvl++) {
+        const levelNum = lvl + 1;
+        const isDisabled = refRack.disabledLevels.has(lvl);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = isDisabled ? `Viga N${levelNum}: Quitada (2X)` : `Viga Nivel ${levelNum}`;
+        btn.className = isDisabled
+          ? 'px-2.5 py-1 rounded-md font-mono-tech text-[10.5px] font-semibold bg-orange-950/90 text-orange-300 border border-orange-500/70 transition'
+          : 'px-2.5 py-1 rounded-md font-mono-tech text-[10.5px] font-medium bg-slate-800 text-slate-300 border border-slate-700 hover:border-orange-500/50 transition';
+
+        btn.onclick = () => {
+          getTargetRacks().forEach((r) => {
+            if (isDisabled) r.disabledLevels.delete(lvl);
+            else r.disabledLevels.add(lvl);
+          });
+          renderDoubleLevelRacksUI();
+          rebuildScene();
+        };
+        lvlContainer.appendChild(btn);
+      }
+
+      const selRack = document.getElementById('sel-beam-rack');
+      const selBay = document.getElementById('sel-beam-bay');
+      const selLvl = document.getElementById('sel-beam-level');
+
+      if (state.activeScope.startsWith('rack:')) {
+        selRack.value = state.activeScope.split(':')[1];
+      }
+
+      const chosenRack = state.racks[selRack.value] || refRack;
+      const maxBays = getRackBays(chosenRack);
+      const prevBay = parseInt(selBay.value, 10) || 1;
+      selBay.innerHTML = '';
+      for (let b = 1; b <= Math.max(1, maxBays); b++) {
+        const opt = document.createElement('option');
+        opt.value = b;
+        opt.textContent = `B${b}`;
+        if (b === Math.min(prevBay, maxBays)) opt.selected = true;
+        selBay.appendChild(opt);
+      }
+
+      const prevLvl = parseInt(selLvl.value, 10) || 2;
+      selLvl.innerHTML = '';
+      for (let l = 2; l <= chosenRack.levels; l++) {
+        const opt = document.createElement('option');
+        opt.value = l;
+        opt.textContent = `Nivel ${l}`;
+        if (l === Math.min(prevLvl, chosenRack.levels)) opt.selected = true;
+        selLvl.appendChild(opt);
+      }
+
+      const listContainer = document.getElementById('disabled-beams-list');
+      listContainer.innerHTML = '';
+      let countTramos = 0;
+
+      RACK_IDS.forEach((rId) => {
+        const r = state.racks[rId];
+        r.disabledTramos.forEach((tKey) => {
+          countTramos++;
+          const [b, l] = tKey.split('-');
+          const tag = document.createElement('span');
+          tag.className =
+            'inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950/90 border border-rose-500/50 text-rose-200 font-mono-tech text-[10px]';
+          tag.innerHTML = `<span>${rId}·B${b}·N${l}</span>`;
+
+          const closeBtn = document.createElement('button');
+          closeBtn.type = 'button';
+          closeBtn.textContent = '×';
+          closeBtn.className = 'text-rose-400 hover:text-white font-bold text-xs leading-none ml-0.5';
+          closeBtn.onclick = () => {
+            r.disabledTramos.delete(tKey);
+            renderDoubleLevelRacksUI();
+            rebuildScene();
+          };
+          tag.appendChild(closeBtn);
+          listContainer.appendChild(tag);
+        });
+      });
+
+      if (countTramos === 0) {
+        const emptyHint = document.createElement('span');
+        emptyHint.className = 'text-[10px] text-slate-500 italic';
+        emptyHint.textContent = 'Sin tramos puntuales deshabilitados.';
+        listContainer.appendChild(emptyHint);
+      }
+    }
+
+    function syncTunnelLevelsOptions() {
+      const refRack = getReferenceRack();
+      const sel = document.getElementById('inp-tunnel-levels');
+      const maxTunnelLvl = Math.max(1, refRack.levels - 1);
+      if (refRack.tunnelLevels > maxTunnelLvl) {
+        refRack.tunnelLevels = maxTunnelLvl;
+      }
+      sel.innerHTML = '';
+      for (let i = 1; i <= maxTunnelLvl; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = i === 1 ? '1 Nivel (Piso N1)' : `${i} Niveles (N1–N${i})`;
+        if (i === refRack.tunnelLevels) opt.selected = true;
+        sel.appendChild(opt);
+      }
+    }
+
+    function renderTunnelChips() {
+      const refRack = getReferenceRack();
+      document.getElementById('lbl-tunnel-target-rack').textContent = getScopeDisplayName();
+      const container = document.getElementById('tunnels-bays-container');
+      container.innerHTML = '';
+
+      const numBays = getRackBays(refRack);
+      for (let i = 1; i <= numBays; i++) {
+        const active = refRack.tunnels.has(i);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = `B${i}`;
+        btn.className = active
+          ? 'px-2 py-1 rounded-md font-mono-tech text-[11px] font-bold bg-emerald-600 text-white border border-emerald-400 shadow transition'
+          : 'px-2 py-1 rounded-md font-mono-tech text-[11px] bg-slate-800 text-slate-400 border border-slate-700 hover:text-white transition';
+        btn.onclick = () => {
+          getTargetRacks().forEach((r) => {
+            if (i <= getRackBays(r)) {
+              if (active) r.tunnels.delete(i);
+              else r.tunnels.add(i);
+            }
+          });
+          renderTunnelChips();
+          rebuildScene();
+        };
+        container.appendChild(btn);
+      }
+    }
+
+    function refreshScopeUI() {
+      const refRack = getReferenceRack();
+      const scopeName = getScopeDisplayName();
+
+      document.getElementById('active-rack-badge').textContent = scopeName;
+      document.getElementById('active-scope-subtitle').textContent =
+        `Editando: ${scopeName} (${refRack.doubleDepth ? '2F Doble Prof.' : '1F Simple Prof.'}) · Bastidor ${refRack.rackHeight.toFixed(2)} m · Paso ${refRack.levelHeights[0].toFixed(3)} m`;
+
+      document.querySelectorAll('.scope-btn').forEach((btn) => {
+        const isSelected = btn.dataset.scope === state.activeScope;
+        if (isSelected) {
+          btn.className =
+            'scope-btn py-1 px-1 rounded-md font-mono-tech font-bold text-[11px] bg-orange-600 text-white shadow transition';
+        } else if (btn.dataset.scope.startsWith('rack:')) {
+          btn.className =
+            'scope-btn py-1 px-1 rounded-md font-mono-tech font-bold text-[11px] text-slate-300 hover:text-white transition';
+        } else {
+          btn.className =
+            'scope-btn py-1 px-1 rounded-md font-mono-tech font-semibold text-[10px] text-sky-300 hover:text-white transition';
+        }
+      });
+
+      document.getElementById('inp-rack-height').value = refRack.rackHeight.toFixed(2);
+      document.getElementById('inp-levels').value = refRack.levels;
+      document.getElementById('inp-uniform-pitch').value = (refRack.levelHeights[0] || 1.250).toFixed(3);
+      document.getElementById('sel-fill-pattern').value = refRack.fillPattern;
+
+      renderIndividualDoorsUI();
+      renderIndividualLevelInputs();
+      renderDoubleDepthRacksUI();
+      renderDoubleLevelRacksUI();
+      syncTunnelLevelsOptions();
+      renderTunnelChips();
+      rebuildScene();
+    }
+
+    // =========================================================================
+    // 9. MODO "SOLO 3D", GUARDADO / COMPARTIR Y EVENTOS DE INTERFAZ
+    // =========================================================================
+    function setCleanViewMode(enabled) {
+      isCleanView = enabled;
+      const header = document.getElementById('hud-header');
+      const sidebar = document.getElementById('control-sidebar');
+      const footer = document.getElementById('cam-footer');
+      const exitBtn = document.getElementById('btn-exit-clean-view');
+
+      if (enabled) {
+        header.classList.add('hidden');
+        sidebar.classList.add('hidden');
+        footer.classList.add('hidden');
+        overlayContainer.classList.add('hidden');
+        dimensions3DGroup.visible = false;
+        exitBtn.classList.remove('hidden');
+      } else {
+        header.classList.remove('hidden');
+        sidebar.classList.remove('hidden');
+        footer.classList.remove('hidden');
+        overlayContainer.classList.remove('hidden');
+        dimensions3DGroup.visible = state.showDimensions;
+        exitBtn.classList.add('hidden');
+        syncDimensionDOMElements();
+        updateResponsiveLayout();
+      }
+    }
+
+    async function shareAndSaveCurrentState() {
+      const encoded = serializeStatePayload(true);
+      autoSaveLocalState();
+
+      try {
+        window.history.replaceState(null, '', `#cfg=${encoded}`);
+      } catch (e) {}
+
+      const baseUrl = window.location.href.split('#')[0];
+      const shareUrl = `${baseUrl}#cfg=${encoded}`;
+
+      let copied = false;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          copied = true;
+        } catch (e) {
+          copied = false;
+        }
+      }
+
+      if (!copied) {
+        const tempInput = document.createElement('input');
+        tempInput.value = shareUrl;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        try {
+          copied = document.execCommand('copy');
+        } catch (e) {
+          copied = false;
+        }
+        document.body.removeChild(tempInput);
+      }
+
+      if (copied) {
+        showToast('Configuración guardada y enlace copiado al portapapeles para compartir', 3200);
+      } else {
+        showToast('Configuración guardada en la URL y en este navegador', 3000);
+      }
+    }
+
+    function bindInputs() {
+      document.getElementById('btn-share-state').addEventListener('click', shareAndSaveCurrentState);
+
+      document.getElementById('btn-clean-view').addEventListener('click', () => {
+        setCleanViewMode(true);
+      });
+
+      document.getElementById('btn-exit-clean-view').addEventListener('click', () => {
+        setCleanViewMode(false);
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
+        if (e.key === 'Escape' && isCleanView) {
+          setCleanViewMode(false);
+        } else if (e.key === 'h' || e.key === 'H') {
+          setCleanViewMode(!isCleanView);
+        }
+      });
+
+      document.querySelectorAll('.scope-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.activeScope = btn.dataset.scope;
+          refreshScopeUI();
+        });
+      });
+
+      document.getElementById('chk-doors').addEventListener('change', (e) => {
+        state.showDoors = e.target.checked;
+        rebuildScene();
+      });
+
+      const setAllDoorsOpenPct = (pct) => {
+        const ratio = Math.max(0, Math.min(1, pct / 100));
+        [1, 2, 3].forEach((id) => {
+          state.doorTargetOpen[id] = ratio;
+        });
+        renderIndividualDoorsUI();
+        rebuildScene();
+      };
+
+      document.getElementById('slider-door-open').addEventListener('input', (e) => {
+        setAllDoorsOpenPct(parseInt(e.target.value, 10) || 0);
+      });
+
+      document.querySelectorAll('.door-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const pct = parseInt(btn.dataset.doorPct, 10) || 0;
+          setAllDoorsOpenPct(pct);
+          showToast(`3 Puertas ajustadas a ${pct}% de apertura vertical`);
+        });
+      });
+
+      document.getElementById('btn-all-2f').addEventListener('click', () => {
+        getTargetRacks().forEach((r) => {
+          r.doubleDepth = true;
+        });
+        renderDoubleDepthRacksUI();
+        rebuildScene();
+        showToast(`Doble Profundidad (2F) activada en ${getScopeDisplayName()}`);
+      });
+
+      document.getElementById('btn-all-1f').addEventListener('click', () => {
+        getTargetRacks().forEach((r) => {
+          r.doubleDepth = false;
+        });
+        renderDoubleDepthRacksUI();
+        rebuildScene();
+        showToast(`Simple Profundidad (1F) restaurada en ${getScopeDisplayName()}`);
+      });
+
+      document.getElementById('btn-preset-central-2f').addEventListener('click', () => {
+        RACK_IDS.forEach((id) => {
+          state.racks[id].doubleDepth = id === '2A' || id === '2B';
+        });
+        renderDoubleDepthRacksUI();
+        rebuildScene();
+        showToast('Bloque central (Racks 2A y 2B) configurado en Doble Profundidad (2F)');
+      });
+
+      document.getElementById('btn-preset-all-global-2f').addEventListener('click', () => {
+        RACK_IDS.forEach((id) => {
+          state.racks[id].doubleDepth = true;
+        });
+        renderDoubleDepthRacksUI();
+        rebuildScene();
+        showToast('Los 6 racks del almacén configurados en Doble Profundidad (2F)');
+      });
+
+      document.getElementById('inp-rack-height').addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (isNaN(val)) return;
+        const clamped = Math.max(2.0, Math.min(16.0, val));
+        getTargetRacks().forEach((r) => {
+          r.rackHeight = clamped;
+        });
+        rebuildScene();
+      });
+
+      document.getElementById('inp-levels').addEventListener('change', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (!isNaN(val)) {
+          const clamped = Math.max(3, Math.min(6, val));
+          getTargetRacks().forEach((r) => {
+            r.levels = clamped;
+          });
+          renderIndividualLevelInputs();
+          renderDoubleLevelRacksUI();
+          syncTunnelLevelsOptions();
+          rebuildScene();
+        }
+      });
+
+      document.getElementById('btn-apply-uniform-pitch').addEventListener('click', () => {
+        const val = parseFloat(document.getElementById('inp-uniform-pitch').value);
+        if (isNaN(val)) return;
+        const clamped = Math.max(0.50, Math.min(4.50, val));
+        getTargetRacks().forEach((r) => {
+          for (let i = 0; i < r.levelHeights.length; i++) {
+            r.levelHeights[i] = clamped;
+          }
+        });
+        renderIndividualLevelInputs();
+        rebuildScene();
+      });
+
+      document.getElementById('btn-copy-heights-all').addEventListener('click', () => {
+        const refRack = getReferenceRack();
+        RACK_IDS.forEach((id) => {
+          const r = state.racks[id];
+          r.rackHeight = refRack.rackHeight;
+          r.levels = refRack.levels;
+          r.levelHeights = [...refRack.levelHeights];
+        });
+        rebuildScene();
+        showToast(`Alturas de Rack ${refRack.id} copiadas a los 6 racks`);
+      });
+
+      document.getElementById('sel-beam-rack').addEventListener('change', () => {
+        renderDoubleLevelRacksUI();
+      });
+
+      document.getElementById('btn-toggle-single-beam').addEventListener('click', () => {
+        const rId = document.getElementById('sel-beam-rack').value;
+        const b = document.getElementById('sel-beam-bay').value;
+        const l = document.getElementById('sel-beam-level').value;
+        const key = `${b}-${l}`;
+        const rack = state.racks[rId];
+        if (rack) {
+          if (rack.disabledTramos.has(key)) rack.disabledTramos.delete(key);
+          else rack.disabledTramos.add(key);
+        }
+        renderDoubleLevelRacksUI();
+        rebuildScene();
+      });
+
+      const bindGlobalNum = (id, key, min, max) => {
+        const el = document.getElementById(id);
+        el.addEventListener('input', () => {
+          const val = parseFloat(el.value);
+          if (isNaN(val)) return;
+          state[key] = Math.max(min, Math.min(max, val));
+          rebuildScene();
+        });
+      };
+
+      bindGlobalNum('inp-beam-length', 'beamLength', 1.0, 4.5);
+      bindGlobalNum('inp-beam-height', 'beamHeight', 0.05, 0.30);
+      bindGlobalNum('inp-rack-depth', 'rackDepth', 0.6, 2.0);
+      bindGlobalNum('inp-double-depth-gap', 'doubleDepthGap', 0.10, 0.60);
+      bindGlobalNum('inp-back-spacer', 'backToBackSpacer', 0.05, 0.25);
+
+      [1, 2, 3].forEach((aisleId) => {
+        const inpAisle = document.getElementById(`inp-aisle-${aisleId}`);
+        inpAisle.addEventListener('input', () => {
+          const val = parseFloat(inpAisle.value);
+          if (isNaN(val)) return;
+          state.aisleWidths[aisleId] = Math.max(1.5, Math.min(8.0, val));
+          rebuildScene();
+        });
+      });
+
+      document.getElementById('inp-bays-a').addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (!isNaN(val)) {
+          state.baysA = Math.max(1, Math.min(25, val));
+          renderTunnelChips();
+          renderDoubleLevelRacksUI();
+          rebuildScene();
+        }
+      });
+
+      document.getElementById('inp-bays-b').addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (!isNaN(val)) {
+          state.baysB = Math.max(1, Math.min(25, val));
+          renderTunnelChips();
+          renderDoubleLevelRacksUI();
+          rebuildScene();
+        }
+      });
+
+      document.getElementById('inp-tunnel-levels').addEventListener('change', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (!isNaN(val)) {
+          getTargetRacks().forEach((r) => {
+            r.tunnelLevels = val;
+          });
+          rebuildScene();
+        }
+      });
+
+      document.getElementById('chk-pallets').addEventListener('change', (e) => {
+        state.showPallets = e.target.checked;
+        document.getElementById('pallet-occupancy-controls').style.opacity = state.showPallets ? '1' : '0.45';
+        rebuildScene();
+      });
+
+      const applyPalletCountToTargets = (newCount) => {
+        const targets = getTargetRacks();
+        if (targets.length === 1) {
+          targets[0].palletCount = Math.max(0, newCount);
+        } else {
+          const perRack = Math.floor(newCount / targets.length);
+          const rem = newCount % targets.length;
+          targets.forEach((r, idx) => {
+            r.palletCount = perRack + (idx < rem ? 1 : 0);
+          });
+        }
+        rebuildScene();
+      };
+
+      const sliderPallet = document.getElementById('slider-pallet-count');
+      const inpPallet = document.getElementById('inp-pallet-count');
+
+      sliderPallet.addEventListener('input', () => {
+        applyPalletCountToTargets(parseInt(sliderPallet.value, 10) || 0);
+      });
+
+      inpPallet.addEventListener('input', () => {
+        const maxVal = parseInt(inpPallet.max, 10) || 0;
+        let val = parseInt(inpPallet.value, 10);
+        if (isNaN(val)) return;
+        val = Math.max(0, Math.min(maxVal, val));
+        applyPalletCountToTargets(val);
+      });
+
+      document.querySelectorAll('.pct-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const pct = parseFloat(btn.dataset.pct);
+          const maxVal = parseInt(sliderPallet.max, 10) || 0;
+          applyPalletCountToTargets(Math.round(maxVal * pct));
+        });
+      });
+
+      document.getElementById('sel-fill-pattern').addEventListener('change', (e) => {
+        const mode = e.target.value;
+        getTargetRacks().forEach((r) => {
+          r.fillPattern = mode;
+          if (mode === 'random') {
+            r.randomSeed = Math.floor(Math.random() * 10000);
+          }
+        });
+        rebuildScene();
+      });
+
+      document.getElementById('chk-dimensions').addEventListener('change', (e) => {
+        state.showDimensions = e.target.checked;
+        dimensions3DGroup.visible = state.showDimensions && !isCleanView;
+        rebuildScene();
+      });
+
+      document.getElementById('chk-guards').addEventListener('change', (e) => {
+        state.showGuards = e.target.checked;
+        rebuildScene();
+      });
+
+      const sidebar = document.getElementById('control-sidebar');
+      const toggleBtn = document.getElementById('toggle-sidebar-btn');
+      const toggleText = document.getElementById('toggle-sidebar-text');
+      let sidebarOpen = true;
+      toggleBtn.addEventListener('click', () => {
+        sidebarOpen = !sidebarOpen;
+        sidebar.style.transform = sidebarOpen ? 'translateX(0)' : 'translateX(calc(100% + 24px))';
+        toggleText.textContent = sidebarOpen ? 'Ocultar Panel' : 'Mostrar Panel';
+      });
+
+      document.getElementById('btn-reset-defaults').addEventListener('click', () => {
+        state = createInitialState();
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+          window.history.replaceState(null, '', window.location.href.split('#')[0]);
+        } catch (e) {}
+
+        syncGlobalInputsFromState();
+        refreshScopeUI();
+        animateCameraTo('iso');
+        showToast('Parámetros restaurados a valores por defecto');
+      });
+    }
+
+    let camAnim = null;
+
+    function animateCameraTo(viewKey) {
+      const lenA = calculateRowTotalLength(state.baysA, state.beamLength);
+      const lenB = calculateRowTotalLength(state.baysB, state.beamLength);
+      const maxLen = Math.max(lenA, lenB, 10);
+      const midH = 2.4;
+
+      const targetPos = new THREE.Vector3();
+      const targetLook = new THREE.Vector3(0, midH, 0);
+
+      if (viewKey === 'iso') {
+        targetPos.set(-maxLen * 1.15, 14.5, maxLen * 0.72);
+      } else if (viewKey === 'front') {
+        targetPos.set(-maxLen * 1.35, 3.6, 0);
+        targetLook.set(0, 2.6, 0);
+      } else if (viewKey === 'top') {
+        targetPos.set(-0.01, Math.max(32, maxLen * 1.45), 0);
+        targetLook.set(0, 0, 0);
+      } else if (viewKey === 'aisle1') {
+        const z1 = aisleCenterZMap[1] || -6.5;
+        targetPos.set(-maxLen * 0.72, 2.3, z1);
+        targetLook.set(maxLen * 0.35, 2.2, z1);
+      } else if (viewKey === 'aisle2') {
+        const z2 = aisleCenterZMap[2] || 0;
+        targetPos.set(-maxLen * 0.72, 2.3, z2);
+        targetLook.set(maxLen * 0.35, 2.2, z2);
+      } else if (viewKey === 'aisle3') {
+        const z3 = aisleCenterZMap[3] || 6.5;
+        targetPos.set(-maxLen * 0.72, 2.3, z3);
+        targetLook.set(maxLen * 0.35, 2.2, z3);
+      }
+
+      camAnim = {
+        startPos: camera.position.clone(),
+        endPos: targetPos,
+        startLook: controls.target.clone(),
+        endLook: targetLook,
+        progress: 0,
+      };
+
+      document.querySelectorAll('.cam-view-btn').forEach((btn) => {
+        const isAct = btn.dataset.view === viewKey;
+        if (viewKey === 'aisle3') {
+          btn.className = isAct
+            ? 'cam-view-btn px-2.5 py-1 rounded-xl text-xs font-semibold bg-orange-600 text-white shadow transition'
+            : 'cam-view-btn px-2.5 py-1 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition';
+        } else {
+          btn.className = isAct
+            ? 'cam-view-btn px-2.5 py-1 rounded-xl text-xs font-semibold bg-blue-600 text-white shadow transition'
+            : 'cam-view-btn px-2.5 py-1 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition';
+        }
+      });
+    }
+
+    document.querySelectorAll('.cam-view-btn').forEach((btn) => {
+      btn.addEventListener('click', () => animateCameraTo(btn.dataset.view));
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      updateResponsiveLayout();
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      [1, 2, 3].forEach((id) => {
+        const curr = state.doorCurrentOpen[id] ?? 0.75;
+        const targ = state.doorTargetOpen[id] ?? 0.75;
+        if (Math.abs(curr - targ) > 0.002) {
+          state.doorCurrentOpen[id] = curr + (targ - curr) * 0.12;
+          applyDoorOpenVisual(id, state.doorCurrentOpen[id]);
+        }
+      });
+
+      if (camAnim) {
+        camAnim.progress = Math.min(1, camAnim.progress + 0.045);
+        const t = 1 - Math.pow(1 - camAnim.progress, 3);
+        camera.position.lerpVectors(camAnim.startPos, camAnim.endPos, t);
+        controls.target.lerpVectors(camAnim.startLook, camAnim.endLook, t);
+        if (camAnim.progress >= 1) camAnim = null;
+      }
+
+      controls.update();
+      updateProjectedLabels();
+      renderer.render(scene, camera);
+    }
+
+    window.onload = () => {
+      let loadedFromSource = null;
+      let savedCamera = null;
+      const hashMatch = window.location.hash.match(/cfg=([A-Za-z0-9\-_]+)/);
+      if (hashMatch && hashMatch[1]) {
+        savedCamera = applySerializedPayload(hashMatch[1]);
+        loadedFromSource = 'enlace compartido';
+      } else {
+        try {
+          const localEncoded = localStorage.getItem(STORAGE_KEY);
+          if (localEncoded) {
+            savedCamera = applySerializedPayload(localEncoded);
+            loadedFromSource = 'sesión guardada';
+          }
+        } catch (e) {}
+      }
+
+      bindInputs();
+      syncGlobalInputsFromState();
+      refreshScopeUI();
+      updateResponsiveLayout();
+
+      if (savedCamera && Array.isArray(savedCamera.p) && Array.isArray(savedCamera.t)) {
+        camera.position.set(savedCamera.p[0], savedCamera.p[1], savedCamera.p[2]);
+        controls.target.set(savedCamera.t[0], savedCamera.t[1], savedCamera.t[2]);
+        controls.update();
+      }
+
+      if (loadedFromSource) {
+        showToast(`Configuración cargada desde ${loadedFromSource}`);
+      }
+
+      animate();
+    };
+  </script>
+</body>
+</html>
