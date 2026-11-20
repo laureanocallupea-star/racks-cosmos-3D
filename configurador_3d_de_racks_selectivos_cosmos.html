@@ -1,0 +1,3154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configurador 3D de Racks Selectivos — COSMOS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', sans-serif;
+      background-color: #0b0f17;
+      color: #f1f5f9;
+    }
+    .font-mono-tech {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+    #dimensions-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 5;
+      overflow: hidden;
+    }
+    .dim-label {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(56, 189, 248, 0.65);
+      color: #e0f2fe;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(4px);
+    }
+    .dim-label.level {
+      border-color: rgba(242, 101, 34, 0.85);
+      color: #ffedd5;
+      font-size: 9.5px;
+      padding: 1px 6px;
+    }
+    .dim-label.tunnel {
+      border-color: rgba(16, 185, 129, 0.85);
+      background: rgba(6, 78, 59, 0.92);
+      color: #d1fae5;
+    }
+    .dim-label.row-total {
+      border-color: rgba(250, 204, 21, 0.85);
+      background: rgba(30, 27, 15, 0.92);
+      color: #fef08a;
+      font-size: 10.5px;
+    }
+    .dim-label.rack-tag {
+      border-color: rgba(148, 163, 184, 0.7);
+      background: rgba(15, 23, 42, 0.95);
+      color: #f8fafc;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+    }
+    .dim-label.rack-tag.active-rack {
+      border-color: rgba(249, 115, 22, 0.95);
+      background: rgba(67, 20, 7, 0.95);
+      color: #ffedd5;
+    }
+    .dim-label.aisle-banner {
+      border-color: rgba(56, 189, 248, 0.9);
+      background: rgba(8, 47, 73, 0.94);
+      color: #f0f9ff;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      padding: 3px 9px;
+    }
+    .dim-label.aisle-banner.aisle-3 {
+      border-color: rgba(251, 146, 60, 0.95);
+      background: rgba(67, 20, 7, 0.94);
+      color: #ffedd5;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 5px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.5);
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.5);
+      border-radius: 9999px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.8);
+    }
+    input[type='number']::-webkit-inner-spin-button {
+      opacity: 1;
+    }
+  </style>
+
+  <!-- Import Map para Three.js v0.160.0 desde CDN -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- Contenedor WebGL 3D -->
+  <div id="canvas-container"></div>
+
+  <!-- Capa de Etiquetas HTML Proyectadas para Cotas 3D, Racks y Pasillos -->
+  <div id="dimensions-overlay"></div>
+
+  <!-- Banner de Notificación No Bloqueante (Reemplazo de alert/confirm) -->
+  <div
+    id="status-toast"
+    class="fixed top-20 left-1/2 -translate-x-1/2 z-30 hidden bg-slate-900/95 border border-sky-400/60 text-sky-100 text-xs font-medium px-4 py-2 rounded-xl shadow-2xl backdrop-blur-md transition-opacity duration-300"
+  ></div>
+
+  <!-- Banner de Diseño Compartido Cargado -->
+  <div
+    id="shared-loaded-banner"
+    class="fixed top-20 left-2.5 z-30 hidden bg-emerald-950/95 border border-emerald-400/70 text-emerald-100 text-xs font-medium px-3.5 py-2 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-2.5"
+  >
+    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+    <span>Diseño compartido cargado correctamente</span>
+    <button
+      id="btn-dismiss-shared-banner"
+      type="button"
+      class="text-emerald-300 hover:text-white font-bold text-sm leading-none ml-1"
+      title="Cerrar aviso"
+    >
+      ×
+    </button>
+  </div>
+
+  <!-- HUD Superior: Logo COSMOS, Título, Métricas Clave y Alertas Normativas -->
+  <header class="fixed top-2.5 left-2.5 right-2.5 z-20 flex flex-wrap items-start justify-between gap-2 pointer-events-none">
+    <!-- Branding Institucional COSMOS + Título del Configurador -->
+    <div class="pointer-events-auto bg-slate-900/92 backdrop-blur-md border border-slate-700/80 rounded-xl px-3.5 py-2 shadow-2xl flex items-center gap-3">
+      <!-- Placa de Logotipo COSMOS (3 franjas azules onduladas + Wordmark COSMOS #071633) -->
+      <div
+        class="bg-white rounded-lg px-2.5 py-1.5 border border-slate-300/90 shadow-inner flex items-center gap-2 shrink-0"
+        title="COSMOS — Ingeniería y Almacenamiento Industrial"
+      >
+        <svg class="w-8 h-6 shrink-0" viewBox="0 0 44 30" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Isotipo COSMOS">
+          <path
+            d="M2 5.5C9.5 1.5 15.5 9.2 22.5 5.5C29.5 1.8 35.5 8.8 42 5.2V10.5C35.5 14.1 29.5 7.1 22.5 10.8C15.5 14.5 9.5 6.8 2 10.8V5.5Z"
+            fill="#60A5FA"
+          />
+          <path
+            d="M2 13.5C9.5 9.5 15.5 17.2 22.5 13.5C29.5 9.8 35.5 16.8 42 13.2V18.5C35.5 22.1 29.5 15.1 22.5 18.8C15.5 22.5 9.5 14.8 2 18.8V13.5Z"
+            fill="#1D4ED8"
+          />
+          <path
+            d="M2 21.5C9.5 17.5 15.5 25.2 22.5 21.5C29.5 17.8 35.5 24.8 42 21.2V26.5C35.5 30.1 29.5 23.1 22.5 26.8C15.5 30.5 9.5 22.8 2 26.8V21.5Z"
+            fill="#071633"
+          />
+        </svg>
+        <span class="font-extrabold tracking-[0.14em] text-[#071633] text-sm leading-none">COSMOS</span>
+      </div>
+
+      <div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <h1 class="text-sm sm:text-base font-bold tracking-tight text-white">
+            Configurador 3D de Racks Selectivos — COSMOS
+          </h1>
+          <span class="hidden xl:inline-block text-[10px] font-mono-tech uppercase px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-400/30">
+            P1 · P2 · P3
+          </span>
+        </div>
+        <p id="active-scope-subtitle" class="text-[11px] text-slate-400">
+          Editando: Rack 3A (1F) · Bastidor 5.50 m · Luz 1.250 m + Peralte 0.10 m
+        </p>
+      </div>
+    </div>
+
+    <!-- Panel HUD Central de KPIs y Alertas Normativas -->
+    <div class="pointer-events-auto flex flex-wrap items-center gap-2 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl px-3 py-2 shadow-2xl">
+      <!-- KPI: Nichos Totales y Ocupación -->
+      <div class="px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/70">
+        <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Ocupación / Nichos (6 Racks)</div>
+        <div class="flex items-baseline gap-1.5">
+          <span id="kpi-placed-pallets" class="text-lg font-bold font-mono-tech text-orange-400">0</span>
+          <span class="text-xs font-mono-tech text-slate-400">/ <span id="kpi-total-pallets" class="text-slate-200 font-semibold">0</span></span>
+          <span id="kpi-occupancy-pct" class="text-[11px] font-mono-tech px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30">0.0%</span>
+        </div>
+        <div id="kpi-deductions-summary" class="text-[10px] font-mono-tech text-emerald-400 mt-0.5">
+          P1:0/0 · P2:0/0 · P3:0/0
+        </div>
+      </div>
+
+      <!-- KPI: Longitudes y Anchos de Pasillos -->
+      <div class="px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/70">
+        <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Layout Almacén & Peralte</div>
+        <div class="text-xs font-mono-tech text-slate-200 mt-0.5">
+          <span class="text-sky-400 font-semibold">Filas A:</span> <span id="kpi-len-a">17.38</span>m &nbsp;|&nbsp;
+          <span class="text-amber-400 font-semibold">Filas B:</span> <span id="kpi-len-b">19.85</span>m
+        </div>
+        <div id="kpi-aisle-widths" class="text-[10px] font-mono-tech text-slate-300 mt-0.5">
+          P1:3.20m · P2:3.20m · P3:3.20m · Viga:0.10m
+        </div>
+      </div>
+
+      <!-- KPI: Validaciones Normativas -->
+      <div class="flex flex-col gap-1 pl-1">
+        <div id="alert-top-clearance" class="flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md border font-medium">
+          <span class="w-2 h-2 rounded-full"></span>
+          <span>Resguardo Punta: 0.100 m</span>
+        </div>
+        <div id="alert-beam-clearance" class="flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md border font-medium">
+          <span class="w-2 h-2 rounded-full"></span>
+          <span>Luz Libre Mín: 1.250 m</span>
+        </div>
+        <div id="alert-tunnel-clearance" class="hidden items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md border font-medium">
+          <span class="w-2 h-2 rounded-full"></span>
+          <span>Túnel Paso: 3.950 m</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Botones de Acción Rápida: Compartir Link + Toggle Panel -->
+    <div class="pointer-events-auto flex items-center gap-1.5">
+      <button
+        id="btn-header-share"
+        type="button"
+        title="Guardar configuración en la URL y copiar enlace para compartir"
+        class="bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/60 rounded-xl px-3 py-2.5 shadow-2xl flex items-center gap-1.5 text-xs font-semibold transition"
+      >
+        <span>🔗</span>
+        <span class="hidden sm:inline">Compartir Link</span>
+      </button>
+
+      <button
+        id="toggle-sidebar-btn"
+        type="button"
+        class="bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700 rounded-xl px-3 py-2.5 shadow-2xl flex items-center gap-2 text-xs font-semibold text-slate-200 transition"
+      >
+        <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        </svg>
+        <span id="toggle-sidebar-text">Ocultar Panel</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Panel Lateral de Control Paramétrico -->
+  <aside
+    id="control-sidebar"
+    class="fixed top-20 right-2.5 bottom-16 w-80 sm:w-[405px] z-20 bg-slate-900/92 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-transform duration-300"
+  >
+    <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+      <span class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+        Control Paramétrico (6 Racks)
+      </span>
+      <button
+        id="btn-reset-defaults"
+        type="button"
+        class="text-[11px] text-sky-400 hover:text-sky-300 font-medium underline underline-offset-2"
+      >
+        Restaurar valores
+      </button>
+    </div>
+
+    <div class="p-4 overflow-y-auto custom-scroll space-y-5 flex-1 text-xs">
+      <!-- Sección 0: Guardado, Compartición por Link URL e Historial Local -->
+      <section class="bg-slate-950/85 border border-emerald-500/35 rounded-xl p-3 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+            Guardar y Compartir Diseño Web
+          </h2>
+          <span class="text-[9.5px] font-mono-tech text-slate-400">URL + Local</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            id="btn-save-share-link"
+            class="py-2 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[11px] shadow flex items-center justify-center gap-1.5 transition"
+          >
+            <span>🔗</span>
+            <span>Guardar y Compartir Link</span>
+          </button>
+          <button
+            type="button"
+            id="btn-save-local-design"
+            class="py-2 px-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-[11px] shadow flex items-center justify-center gap-1.5 transition"
+          >
+            <span>💾</span>
+            <span>Guardar Diseño</span>
+          </button>
+        </div>
+
+        <!-- Caja de enlace listo para copiar/compartir -->
+        <div id="share-url-box" class="hidden bg-slate-900 border border-emerald-500/40 rounded-lg p-2 space-y-1.5">
+          <div class="flex items-center justify-between text-[10px] text-emerald-300 font-semibold">
+            <span>Enlace compartido actualizado en navegador:</span>
+            <button type="button" id="btn-copy-share-url" class="underline hover:text-white">Copiar</button>
+          </div>
+          <input
+            id="inp-share-url"
+            type="text"
+            readonly
+            class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 font-mono-tech text-[10px] text-slate-200 select-all outline-none"
+          />
+        </div>
+
+        <!-- Exportar / Importar JSON -->
+        <div class="flex items-center justify-between gap-1.5 pt-0.5">
+          <button
+            type="button"
+            id="btn-export-json"
+            class="flex-1 py-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10.5px] font-medium transition"
+          >
+            Exportar JSON
+          </button>
+          <button
+            type="button"
+            id="btn-import-json"
+            class="flex-1 py-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10.5px] font-medium transition"
+          >
+            Importar JSON
+          </button>
+          <input id="file-import-json" type="file" accept=".json,application/json" class="hidden" />
+        </div>
+
+        <!-- Historial de diseños guardados localmente -->
+        <div class="border-t border-slate-800/90 pt-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-[10px] font-semibold text-slate-300">Diseños guardados en este navegador:</span>
+            <span id="saved-designs-count" class="text-[9.5px] font-mono-tech text-slate-400">0</span>
+          </div>
+          <div id="saved-designs-list" class="space-y-1 max-h-28 overflow-y-auto custom-scroll"></div>
+        </div>
+      </section>
+
+      <!-- Selector de Destino Rápido (Rack Individual, Pasillo o Todos) -->
+      <section class="bg-slate-950/85 border border-sky-500/35 rounded-xl p-3 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <label class="text-[11px] font-bold uppercase tracking-wider text-sky-300">
+            Destino de Edición (Rack / Pasillo)
+          </label>
+          <span
+            id="active-rack-badge"
+            class="text-[10px] font-mono-tech px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/40"
+          >
+            Rack 3A
+          </span>
+        </div>
+
+        <div>
+          <div class="text-[10px] text-slate-400 mb-1">Editar Rack Individual:</div>
+          <div class="grid grid-cols-6 gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+            <button type="button" data-scope="rack:1A" class="scope-btn py-1.5 px-1 rounded-md font-mono-tech font-bold text-[11px] text-slate-300 hover:text-white transition">1A</button>
+            <button type="button" data-scope="rack:1B" class="scope-btn py-1.5 px-1 rounded-md font-mono-tech font-bold text-[11px] text-slate-300 hover:text-white transition">1B</button>
+            <button type="button" data-scope="rack:2A" class="scope-btn py-1.5 px-1 rounded-md font-mono-tech font-bold text-[11px] text-slate-300 hover:text-white transition">2A</button>
+            <button type="button" data-scope="rack:2B" class="scope-btn py-1.5 px-1 rounded-md font-mono-tech font-bold text-[11px] text-slate-300 hover:text-white transition">2B</button>
+            <button type="button" data-scope="rack:3A" class="scope-btn py-1.5 px-1 rounded-md font-mono-tech font-bold text-[11px] bg-orange-600 text-white shadow transition">3A</button>
+            <button type="button" data-scope="rack:3B" class="scope-btn py-1.5 px-1 rounded-md font-mono-tech font-bold text-[11px] text-slate-300 hover:text-white transition">3B</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="text-[10px] text-slate-400 mb-1">Aplicar Masivamente a Pasillo / Almacén:</div>
+          <div class="grid grid-cols-4 gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+            <button type="button" data-scope="aisle:1" class="scope-btn py-1 px-1 rounded-md font-mono-tech font-semibold text-[10.5px] text-sky-300 hover:text-white transition">P1 (1A+1B)</button>
+            <button type="button" data-scope="aisle:2" class="scope-btn py-1 px-1 rounded-md font-mono-tech font-semibold text-[10.5px] text-sky-300 hover:text-white transition">P2 (2A+2B)</button>
+            <button type="button" data-scope="aisle:3" class="scope-btn py-1 px-1 rounded-md font-mono-tech font-semibold text-[10.5px] text-orange-300 hover:text-white transition">P3 (3A+3B)</button>
+            <button type="button" data-scope="all" class="scope-btn py-1 px-1 rounded-md font-bold text-[10.5px] text-emerald-300 hover:text-white transition">Todos (6)</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sección 1: Alturas del Rack Seleccionado y Cálculo Exacto con Peralte de Larguero -->
+      <section class="space-y-3">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-sky-400">
+            1. Alturas y Peralte de Larguero
+          </h2>
+          <button
+            type="button"
+            id="btn-copy-heights-all"
+            title="Copiar altura de bastidor, niveles y luces libres de este rack a los 6 racks"
+            class="text-[10px] bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 px-2 py-0.5 rounded font-medium transition"
+          >
+            Copiar alturas a todos
+          </button>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label for="inp-rack-height" class="block text-[10px] text-slate-400 mb-1">Alt. Bastidor (m)</label>
+            <input
+              id="inp-rack-height"
+              type="number"
+              step="0.05"
+              min="2.50"
+              max="15.00"
+              value="5.50"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1.5 font-mono-tech text-white outline-none"
+            />
+          </div>
+          <div>
+            <label for="inp-levels" class="block text-[10px] text-slate-400 mb-1">Niveles Carga</label>
+            <select
+              id="inp-levels"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1.5 font-mono-tech text-white outline-none"
+            >
+              <option value="3">3 Niveles</option>
+              <option value="4">4 Niveles</option>
+              <option value="5" selected>5 Niveles</option>
+              <option value="6">6 Niveles</option>
+            </select>
+          </div>
+          <div>
+            <label for="inp-beam-height-top" class="block text-[10px] text-orange-300 font-semibold mb-1">Peralte Viga (m)</label>
+            <input
+              id="inp-beam-height-top"
+              type="number"
+              step="0.01"
+              min="0.05"
+              max="0.30"
+              value="0.10"
+              class="w-full bg-slate-800/90 border border-orange-500/60 focus:border-orange-400 rounded-lg px-2 py-1.5 font-mono-tech text-white outline-none"
+            />
+          </div>
+        </div>
+
+        <div class="bg-slate-950/75 border border-slate-800 rounded-xl p-2.5 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-semibold text-sky-300">Luz Libre Estándar (m):</span>
+            <div class="flex items-center gap-1">
+              <input
+                id="inp-uniform-pitch"
+                type="number"
+                step="0.005"
+                min="0.60"
+                max="3.50"
+                value="1.250"
+                class="w-20 bg-slate-800 border border-slate-700 focus:border-sky-500 rounded-md px-2 py-1 font-mono-tech text-right text-white text-[11px] outline-none"
+              />
+              <button
+                type="button"
+                id="btn-apply-uniform-pitch"
+                class="px-2 py-1 rounded-md bg-sky-600 hover:bg-sky-500 text-white font-semibold text-[10px] shrink-0 transition"
+              >
+                Aplicar a todos
+              </button>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-800/80 pt-2">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-[10.5px] font-semibold text-slate-300">Luz Libre Neta por Nivel (m):</span>
+              <span class="text-[9.5px] text-orange-300 font-mono-tech">+ Peralte = Cota Apoyo</span>
+            </div>
+            <div id="individual-levels-container" class="space-y-1.5"></div>
+          </div>
+        </div>
+
+        <!-- Desglose Matemático Exacto en Vivo (Incluyendo Peralte Acumulado) -->
+        <div class="bg-slate-950/75 border border-slate-800 rounded-xl p-2.5 space-y-1 font-mono-tech text-[11px]">
+          <div class="flex justify-between">
+            <span class="text-slate-400">Suma luces libres (N1–N<span id="calc-n-minus-1">4</span>):</span>
+            <span id="calc-sum-clear" class="text-emerald-400 font-semibold">5.000 m</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">+ Peralte largueros (<span id="calc-beam-count">4</span> × <span id="calc-beam-thick">0.10</span>m):</span>
+            <span id="calc-sum-beams" class="text-orange-300 font-semibold">+0.400 m</span>
+          </div>
+          <div class="flex justify-between border-t border-slate-800 pt-1">
+            <span class="text-slate-300 font-semibold">Cota apoyo último nivel:</span>
+            <span id="calc-top-beam" class="text-orange-400 font-bold">5.400 m</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Resguardo libre punta bastidor:</span>
+            <span id="calc-top-margin" class="text-sky-400 font-semibold">0.100 m</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Luz libre mín. / máx.:</span>
+            <span id="calc-net-clearance" class="text-emerald-400 font-semibold">1.250 m</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sección 2: Doble Profundidad (2F) y Doble Nivel / Doble Altura (2X) -->
+      <section class="space-y-2.5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-orange-400">
+            2. Doble Profundidad (2F) y Doble Nivel (2X)
+          </h2>
+          <span class="text-[10px] text-slate-400">Por rack</span>
+        </div>
+
+        <div class="bg-slate-950/75 border border-sky-500/30 rounded-xl p-2.5 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-semibold text-sky-200">Doble Profundidad por Rack (2F):</span>
+            <div class="flex items-center gap-1">
+              <button
+                type="button"
+                id="btn-all-2f"
+                class="px-1.5 py-0.5 rounded bg-sky-600/80 hover:bg-sky-500 text-[9.5px] font-mono-tech text-white transition"
+              >
+                Todos 2F
+              </button>
+              <button
+                type="button"
+                id="btn-all-1f"
+                class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9.5px] font-mono-tech text-slate-300 border border-slate-700 transition"
+              >
+                Todos 1F
+              </button>
+            </div>
+          </div>
+
+          <div id="double-depth-racks-grid" class="grid grid-cols-3 gap-1.5"></div>
+
+          <div class="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
+            <label for="inp-double-depth-gap" class="text-[10.5px] text-slate-300">
+              Separación fondo 2F (m):
+            </label>
+            <input
+              id="inp-double-depth-gap"
+              type="number"
+              step="0.02"
+              min="0.10"
+              max="0.60"
+              value="0.20"
+              class="w-20 bg-slate-800 border border-slate-700 focus:border-sky-500 rounded-md px-2 py-1 font-mono-tech text-right text-white text-[11px] outline-none"
+            />
+          </div>
+        </div>
+
+        <div class="bg-slate-950/75 border border-slate-800 rounded-xl p-2.5 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-semibold text-slate-200">Doble Nivel / Doble Altura (2X):</span>
+            <span class="text-[9.5px] text-orange-300 font-mono-tech">Quita viga</span>
+          </div>
+          <div id="double-level-racks-grid" class="grid grid-cols-3 gap-1.5"></div>
+
+          <div class="border-t border-slate-800/80 pt-2">
+            <div class="text-[10.5px] text-slate-300 font-medium mb-1">
+              Niveles de viga deshabilitados en
+              <span id="lbl-beam-target-rack" class="text-orange-300 font-mono-tech font-bold">Rack 3A</span>:
+            </div>
+            <div id="global-beam-levels-container" class="flex flex-wrap gap-1.5"></div>
+          </div>
+        </div>
+
+        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 space-y-2">
+          <div class="text-[11px] text-slate-300 font-medium">Quitar / Restaurar tramo puntual (Bahía + Nivel):</div>
+          <div class="grid grid-cols-3 gap-1.5">
+            <div>
+              <label for="sel-beam-rack" class="block text-[10px] text-slate-400 mb-0.5">Rack</label>
+              <select id="sel-beam-rack" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 font-mono-tech text-white outline-none">
+                <option value="1A">Rack 1A</option>
+                <option value="1B">Rack 1B</option>
+                <option value="2A">Rack 2A</option>
+                <option value="2B">Rack 2B</option>
+                <option value="3A" selected>Rack 3A</option>
+                <option value="3B">Rack 3B</option>
+              </select>
+            </div>
+            <div>
+              <label for="sel-beam-bay" class="block text-[10px] text-slate-400 mb-0.5">Bahía</label>
+              <select id="sel-beam-bay" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"></select>
+            </div>
+            <div>
+              <label for="sel-beam-level" class="block text-[10px] text-slate-400 mb-0.5">Nivel Viga</label>
+              <select id="sel-beam-level" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"></select>
+            </div>
+          </div>
+          <button
+            type="button"
+            id="btn-toggle-single-beam"
+            class="w-full py-1.5 px-3 rounded-lg bg-orange-600/90 hover:bg-orange-500 text-white font-semibold text-[11px] shadow transition"
+          >
+            Quitar / Restaurar Tramo Puntual
+          </button>
+
+          <div id="disabled-beams-list" class="flex flex-wrap gap-1.5 pt-0.5"></div>
+        </div>
+      </section>
+
+      <!-- Sección 3: Dimensiones Generales, Pasillos y Separación Espalda-Espalda -->
+      <section class="space-y-3">
+        <h2 class="text-[11px] font-bold uppercase tracking-wider text-sky-400 border-b border-slate-800 pb-1">
+          3. Layout General, Pasillos y Espalda-Espalda
+        </h2>
+
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label for="inp-beam-length" class="block text-[10px] text-slate-400 mb-1">Largo Viga (m)</label>
+            <input
+              id="inp-beam-length"
+              type="number"
+              step="0.01"
+              min="1.20"
+              max="4.00"
+              value="2.38"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+            />
+          </div>
+          <div>
+            <label for="inp-beam-height" class="block text-[10px] text-orange-300 mb-1">Peralte Viga (m)</label>
+            <input
+              id="inp-beam-height"
+              type="number"
+              step="0.01"
+              min="0.05"
+              max="0.30"
+              value="0.10"
+              class="w-full bg-slate-800/90 border border-orange-500/60 focus:border-orange-400 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+            />
+          </div>
+          <div>
+            <label for="inp-rack-depth" class="block text-[10px] text-slate-400 mb-1">Prof. Rack (m)</label>
+            <input
+              id="inp-rack-depth"
+              type="number"
+              step="0.05"
+              min="0.80"
+              max="1.60"
+              value="1.10"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label for="inp-bays-a" class="block text-[10px] text-slate-400 mb-1">Bahías Filas A</label>
+            <input
+              id="inp-bays-a"
+              type="number"
+              step="1"
+              min="1"
+              max="20"
+              value="7"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+            />
+          </div>
+          <div>
+            <label for="inp-bays-b" class="block text-[10px] text-slate-400 mb-1">Bahías Filas B</label>
+            <input
+              id="inp-bays-b"
+              type="number"
+              step="1"
+              min="1"
+              max="20"
+              value="8"
+              class="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+            />
+          </div>
+          <div>
+            <label for="inp-back-spacer" class="block text-[10px] text-emerald-300 mb-1">Sep. Espalda (m)</label>
+            <input
+              id="inp-back-spacer"
+              type="number"
+              step="0.01"
+              min="0.05"
+              max="0.25"
+              value="0.10"
+              class="w-full bg-slate-800/90 border border-emerald-700/70 focus:border-emerald-400 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+            />
+          </div>
+        </div>
+
+        <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-2.5 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-semibold text-slate-200">Ancho de cada pasillo (m):</span>
+            <span class="text-[9.5px] text-slate-400">1B-2A y 2B-3A acoplados</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label for="inp-aisle-1" class="block text-[10px] text-sky-300 mb-0.5">Pasillo 1</label>
+              <input
+                id="inp-aisle-1"
+                type="number"
+                step="0.10"
+                min="1.80"
+                max="7.00"
+                value="3.20"
+                class="w-full bg-slate-800 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+              />
+            </div>
+            <div>
+              <label for="inp-aisle-2" class="block text-[10px] text-sky-300 mb-0.5">Pasillo 2</label>
+              <input
+                id="inp-aisle-2"
+                type="number"
+                step="0.10"
+                min="1.80"
+                max="7.00"
+                value="3.20"
+                class="w-full bg-slate-800 border border-slate-700 focus:border-sky-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+              />
+            </div>
+            <div>
+              <label for="inp-aisle-3" class="block text-[10px] text-orange-300 mb-0.5">Pasillo 3</label>
+              <input
+                id="inp-aisle-3"
+                type="number"
+                step="0.10"
+                min="1.80"
+                max="7.00"
+                value="3.20"
+                class="w-full bg-slate-800 border border-slate-700 focus:border-orange-500 rounded-lg px-2 py-1 font-mono-tech text-white outline-none"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sección 4: Túneles / Pasos Transversales ("Puertas") -->
+      <section class="space-y-2.5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+            4. Túneles / Pasos Transversales
+          </h2>
+          <span id="tunnel-levels-badge" class="text-[10px] font-mono-tech text-emerald-300">Libera N1–N3</span>
+        </div>
+
+        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+          <div>
+            <label for="inp-tunnel-levels" class="block text-slate-200 font-medium text-[11px]">Niveles libres en túnel</label>
+            <span id="tunnel-clear-height-preview" class="text-[10px] font-mono-tech text-emerald-400">Luz libre bajo viga: 3.950 m</span>
+          </div>
+          <select
+            id="inp-tunnel-levels"
+            class="bg-slate-800/95 border border-slate-700 focus:border-emerald-500 rounded-lg px-2.5 py-1.5 font-mono-tech text-white outline-none"
+          ></select>
+        </div>
+
+        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5">
+          <div class="text-[11px] font-semibold text-emerald-300 mb-1.5">
+            Bahías con Túnel en <span id="lbl-tunnel-target-rack" class="font-mono-tech">Rack 3A</span>:
+          </div>
+          <div id="tunnels-bays-container" class="flex flex-wrap gap-1.5"></div>
+        </div>
+      </section>
+
+      <!-- Sección 5: Control de Ocupación, Patrones y Capas 3D -->
+      <section class="space-y-2.5">
+        <h2 class="text-[11px] font-bold uppercase tracking-wider text-sky-400 border-b border-slate-800 pb-1">
+          5. Ocupación de Pallets y Capas 3D
+        </h2>
+
+        <label class="flex items-center justify-between bg-slate-800/60 hover:bg-slate-800 px-3 py-2 rounded-lg cursor-pointer transition">
+          <span class="text-slate-200 font-medium">Mostrar Pallets y Cargas con Film</span>
+          <input id="chk-pallets" type="checkbox" checked class="w-4 h-4 accent-orange-500 rounded cursor-pointer" />
+        </label>
+
+        <div id="pallet-occupancy-controls" class="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span id="occupancy-target-title" class="text-[11px] font-semibold text-slate-200">Pallets en Rack 3A:</span>
+            <span id="sidebar-occupancy-label" class="text-[11px] font-mono-tech text-orange-400 font-semibold">0 / 0 (0.0%)</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <input
+              id="slider-pallet-count"
+              type="range"
+              min="0"
+              max="200"
+              value="0"
+              class="flex-1 accent-orange-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
+            />
+            <input
+              id="inp-pallet-count"
+              type="number"
+              min="0"
+              max="200"
+              value="0"
+              class="w-16 bg-slate-800 border border-slate-700 focus:border-orange-500 rounded-lg px-2 py-1 font-mono-tech text-right text-white outline-none"
+            />
+          </div>
+
+          <div class="grid grid-cols-4 gap-1">
+            <button type="button" data-pct="0" class="pct-preset-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-slate-300 border border-slate-700 transition">Vacío 0%</button>
+            <button type="button" data-pct="0.5" class="pct-preset-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-slate-300 border border-slate-700 transition">50%</button>
+            <button type="button" data-pct="0.85" class="pct-preset-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-slate-300 border border-slate-700 transition">85%</button>
+            <button type="button" data-pct="1" class="pct-preset-btn py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tech text-slate-300 border border-slate-700 transition">Lleno 100%</button>
+          </div>
+
+          <div>
+            <label for="sel-fill-pattern" class="block text-[10px] text-slate-400 mb-1">Patrón de llenado</label>
+            <select
+              id="sel-fill-pattern"
+              class="w-full bg-slate-800/95 border border-slate-700 focus:border-sky-500 rounded-lg px-2.5 py-1.5 text-[11px] text-white outline-none"
+            >
+              <option value="sequential">Secuencial (FIFO)</option>
+              <option value="bottom-up">Desde niveles inferiores</option>
+              <option value="random">Aleatorio (ABC)</option>
+            </select>
+          </div>
+        </div>
+
+        <label class="flex items-center justify-between bg-slate-800/60 hover:bg-slate-800 px-3 py-2 rounded-lg cursor-pointer transition">
+          <span class="text-slate-200 font-medium">Cotas 3D Dinámicas</span>
+          <input id="chk-dimensions" type="checkbox" checked class="w-4 h-4 accent-sky-500 rounded cursor-pointer" />
+        </label>
+
+        <label class="flex items-center justify-between bg-slate-800/60 hover:bg-slate-800 px-3 py-2 rounded-lg cursor-pointer transition">
+          <span class="text-slate-200 font-medium">Protectores y Defensas</span>
+          <input id="chk-guards" type="checkbox" checked class="w-4 h-4 accent-amber-500 rounded cursor-pointer" />
+        </label>
+      </section>
+    </div>
+  </aside>
+
+  <!-- Barra Inferior de Vistas Rápidas de Cámara -->
+  <footer class="fixed bottom-2.5 left-1/2 -translate-x-1/2 z-20 flex flex-wrap items-center justify-center gap-1 bg-slate-900/92 backdrop-blur-md border border-slate-700/80 rounded-2xl p-1.5 shadow-2xl max-w-[96vw]">
+    <button type="button" data-view="iso" class="cam-view-btn px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white shadow transition">
+      Isométrica
+    </button>
+    <button type="button" data-view="aisle1" class="cam-view-btn px-2.5 py-1.5 rounded-xl text-xs font-semibold text-sky-300 hover:bg-slate-800 hover:text-white transition">
+      Pasillo 1
+    </button>
+    <button type="button" data-view="aisle2" class="cam-view-btn px-2.5 py-1.5 rounded-xl text-xs font-semibold text-sky-300 hover:bg-slate-800 hover:text-white transition">
+      Pasillo 2
+    </button>
+    <button type="button" data-view="aisle3" class="cam-view-btn px-2.5 py-1.5 rounded-xl text-xs font-semibold text-orange-300 hover:bg-slate-800 hover:text-white transition">
+      Pasillo 3
+    </button>
+    <button type="button" data-view="front" class="cam-view-btn px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition">
+      Frontal
+    </button>
+    <button type="button" data-view="top" class="cam-view-btn px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition">
+      Planta
+    </button>
+  </footer>
+
+  <!-- Lógica Principal 3D con Three.js -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const STORAGE_KEY_AUTOSAVE = 'cosmos_rack_3d_autosave_v2';
+    const STORAGE_KEY_HISTORY = 'cosmos_rack_3d_designs_v2';
+
+    // Notificación visual no bloqueante en reemplazo de alert/confirm
+    let toastTimer = null;
+    function showToast(message) {
+      const toast = document.getElementById('status-toast');
+      if (!toast) return;
+      toast.textContent = message;
+      toast.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 2800);
+    }
+
+    // =========================================================================
+    // 1. ESTADO PARAMÉTRICO, SERIALIZACIÓN URL (?cfg= / #cfg=) Y CÁLCULO CON PERALTE
+    // =========================================================================
+    const RACK_IDS = ['1A', '1B', '2A', '2B', '3A', '3B'];
+
+    function createRackConfig(
+      id,
+      aisleId,
+      side,
+      defaultPalletCount,
+      defaultTunnels = [],
+      isDoubleHeightDefault = false,
+      isDoubleDepthDefault = false
+    ) {
+      return {
+        id,
+        aisleId,
+        side, // 'A' (izquierda/-Z del pasillo) | 'B' (derecha/+Z del pasillo)
+        rackHeight: 5.50,
+        levels: 5,
+        // Luces libres netas entre cara superior de apoyo inferior y cara inferior de larguero superior
+        levelHeights: [1.250, 1.250, 1.250, 1.250, 1.250, 1.250],
+        tunnelLevels: 3,
+        tunnels: new Set(defaultTunnels),
+        doubleDepth: Boolean(isDoubleDepthDefault),
+        disabledLevels: new Set(isDoubleHeightDefault ? [1] : []),
+        disabledTramos: new Set(),
+        palletCount: defaultPalletCount,
+        fillPattern: 'sequential',
+        randomSeed: 40 + id.charCodeAt(0) * 13 + id.charCodeAt(1) * 7,
+      };
+    }
+
+    function createInitialState() {
+      return {
+        beamLength: 2.38,
+        beamHeight: 0.10,
+        rackDepth: 1.10,
+        doubleDepthGap: 0.20,
+        backToBackSpacer: 0.10,
+        baysA: 7,
+        baysB: 8,
+        aisleWidths: {
+          1: 3.20,
+          2: 3.20,
+          3: 3.20,
+        },
+        activeScope: 'rack:3A',
+        activeView: 'iso',
+        showPallets: true,
+        showDimensions: true,
+        showGuards: true,
+        racks: {
+          '1A': createRackConfig('1A', 1, 'A', 55, [], false, false),
+          '1B': createRackConfig('1B', 1, 'B', 65, [], false, false),
+          '2A': createRackConfig('2A', 2, 'A', 52, [], false, false),
+          '2B': createRackConfig('2B', 2, 'B', 60, [], false, false),
+          '3A': createRackConfig('3A', 3, 'A', 58, [7], false, false),
+          '3B': createRackConfig('3B', 3, 'B', 68, [], false, false),
+        },
+      };
+    }
+
+    let state = createInitialState();
+
+    // Serialización compacta y segura para URL (?cfg=... y #cfg=...) y almacenamiento
+    function serializeStateToPayload(st) {
+      const racksPacked = {};
+      RACK_IDS.forEach((id) => {
+        const r = st.racks[id];
+        racksPacked[id] = {
+          h: Number(r.rackHeight.toFixed(3)),
+          lv: r.levels,
+          lh: r.levelHeights.slice(0, 6).map((v) => Number(v.toFixed(3))),
+          tl: r.tunnelLevels,
+          tu: Array.from(r.tunnels),
+          dd: r.doubleDepth ? 1 : 0,
+          dl: Array.from(r.disabledLevels),
+          dt: Array.from(r.disabledTramos),
+          pc: r.palletCount,
+          fp: r.fillPattern,
+          rs: r.randomSeed,
+        };
+      });
+
+      return {
+        v: 2,
+        bl: Number(st.beamLength.toFixed(3)),
+        bh: Number(st.beamHeight.toFixed(3)),
+        rd: Number(st.rackDepth.toFixed(3)),
+        dg: Number(st.doubleDepthGap.toFixed(3)),
+        bs: Number(st.backToBackSpacer.toFixed(3)),
+        ba: st.baysA,
+        bb: st.baysB,
+        aw: [
+          Number(st.aisleWidths[1].toFixed(2)),
+          Number(st.aisleWidths[2].toFixed(2)),
+          Number(st.aisleWidths[3].toFixed(2)),
+        ],
+        sc: st.activeScope,
+        vw: st.activeView || 'iso',
+        sp: st.showPallets ? 1 : 0,
+        sd: st.showDimensions ? 1 : 0,
+        sg: st.showGuards ? 1 : 0,
+        rk: racksPacked,
+      };
+    }
+
+    function encodeStateToBase64Url(st) {
+      const jsonStr = JSON.stringify(serializeStateToPayload(st));
+      const utf8Bytes = new TextEncoder().encode(jsonStr);
+      let bin = '';
+      for (let i = 0; i < utf8Bytes.length; i++) {
+        bin += String.fromCharCode(utf8Bytes[i]);
+      }
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function decodeBase64UrlToPayload(encoded) {
+      let b64 = encoded.trim().replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4 !== 0) b64 += '=';
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) {
+        bytes[i] = bin.charCodeAt(i);
+      }
+      const jsonStr = new TextDecoder().decode(bytes);
+      return JSON.parse(jsonStr);
+    }
+
+    function hydrateStateFromPayload(payload) {
+      if (!payload || typeof payload !== 'object' || !payload.rk) return false;
+      const next = createInitialState();
+
+      if (typeof payload.bl === 'number') next.beamLength = Math.max(1.0, Math.min(4.5, payload.bl));
+      if (typeof payload.bh === 'number') next.beamHeight = Math.max(0.05, Math.min(0.30, payload.bh));
+      if (typeof payload.rd === 'number') next.rackDepth = Math.max(0.6, Math.min(2.0, payload.rd));
+      if (typeof payload.dg === 'number') next.doubleDepthGap = Math.max(0.10, Math.min(0.60, payload.dg));
+      if (typeof payload.bs === 'number') next.backToBackSpacer = Math.max(0.05, Math.min(0.25, payload.bs));
+      if (typeof payload.ba === 'number') next.baysA = Math.max(1, Math.min(25, Math.round(payload.ba)));
+      if (typeof payload.bb === 'number') next.baysB = Math.max(1, Math.min(25, Math.round(payload.bb)));
+
+      if (Array.isArray(payload.aw) && payload.aw.length === 3) {
+        next.aisleWidths[1] = Math.max(1.5, Math.min(8.0, Number(payload.aw[0]) || 3.20));
+        next.aisleWidths[2] = Math.max(1.5, Math.min(8.0, Number(payload.aw[1]) || 3.20));
+        next.aisleWidths[3] = Math.max(1.5, Math.min(8.0, Number(payload.aw[2]) || 3.20));
+      }
+
+      if (typeof payload.sc === 'string') next.activeScope = payload.sc;
+      if (typeof payload.vw === 'string') next.activeView = payload.vw;
+      if (payload.sp !== undefined) next.showPallets = Boolean(payload.sp);
+      if (payload.sd !== undefined) next.showDimensions = Boolean(payload.sd);
+      if (payload.sg !== undefined) next.showGuards = Boolean(payload.sg);
+
+      RACK_IDS.forEach((id) => {
+        const src = payload.rk[id];
+        if (!src) return;
+        const dst = next.racks[id];
+        if (typeof src.h === 'number') dst.rackHeight = Math.max(2.0, Math.min(16.0, src.h));
+        if (typeof src.lv === 'number') dst.levels = Math.max(3, Math.min(6, Math.round(src.lv)));
+        if (Array.isArray(src.lh)) {
+          for (let i = 0; i < 6; i++) {
+            if (typeof src.lh[i] === 'number') {
+              dst.levelHeights[i] = Math.max(0.50, Math.min(4.50, src.lh[i]));
+            }
+          }
+        }
+        if (typeof src.tl === 'number') dst.tunnelLevels = Math.max(1, Math.min(5, Math.round(src.tl)));
+        if (Array.isArray(src.tu)) dst.tunnels = new Set(src.tu.map(Number));
+        if (src.dd !== undefined) dst.doubleDepth = Boolean(src.dd);
+        if (Array.isArray(src.dl)) dst.disabledLevels = new Set(src.dl.map(Number));
+        if (Array.isArray(src.dt)) dst.disabledTramos = new Set(src.dt.map(String));
+        if (typeof src.pc === 'number') dst.palletCount = Math.max(0, Math.round(src.pc));
+        if (typeof src.fp === 'string') dst.fillPattern = src.fp;
+        if (typeof src.rs === 'number') dst.randomSeed = src.rs;
+      });
+
+      state = next;
+      return true;
+    }
+
+    function extractCfgTokenFromLocation() {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        if (searchParams.get('cfg')) return searchParams.get('cfg');
+        const hash = window.location.hash.replace(/^#/, '');
+        if (hash) {
+          const hashParams = new URLSearchParams(hash);
+          if (hashParams.get('cfg')) return hashParams.get('cfg');
+          if (hash.startsWith('cfg=')) return hash.slice(4);
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    function buildShareableUrl() {
+      const token = encodeStateToBase64Url(state);
+      const url = new URL(window.location.href);
+      url.searchParams.set('cfg', token);
+      url.hash = `cfg=${token}`;
+      return url.toString();
+    }
+
+    function syncUrlAndAutosave(updateUrlBar = false) {
+      try {
+        const payload = serializeStateToPayload(state);
+        localStorage.setItem(STORAGE_KEY_AUTOSAVE, JSON.stringify(payload));
+      } catch (_) {}
+
+      if (updateUrlBar) {
+        try {
+          const shareUrl = buildShareableUrl();
+          window.history.replaceState(null, '', shareUrl);
+          return shareUrl;
+        } catch (_) {}
+      }
+      return window.location.href;
+    }
+
+    function copyTextFallback(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      let ok = false;
+      try {
+        ok = document.execCommand('copy');
+      } catch (_) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    function handleSaveAndShareLink() {
+      const shareUrl = syncUrlAndAutosave(true);
+      const urlBox = document.getElementById('share-url-box');
+      const urlInput = document.getElementById('inp-share-url');
+      if (urlBox && urlInput) {
+        urlInput.value = shareUrl;
+        urlBox.classList.remove('hidden');
+      }
+      copyTextFallback(shareUrl);
+      showToast('🔗 Link guardado en la URL y copiado al portapapeles');
+    }
+
+    function getSavedDesignsList() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function renderSavedDesignsList() {
+      const listEl = document.getElementById('saved-designs-list');
+      const countEl = document.getElementById('saved-designs-count');
+      if (!listEl || !countEl) return;
+
+      const items = getSavedDesignsList();
+      countEl.textContent = items.length;
+      listEl.innerHTML = '';
+
+      if (items.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'text-[10px] text-slate-500 italic py-0.5';
+        empty.textContent = 'Aún no hay diseños guardados en historial.';
+        listEl.appendChild(empty);
+        return;
+      }
+
+      items.forEach((item, idx) => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between gap-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1';
+
+        const info = document.createElement('div');
+        info.className = 'truncate';
+        info.innerHTML = `<div class="text-[10.5px] font-semibold text-slate-200 truncate">${item.name}</div><div class="text-[9px] font-mono-tech text-slate-400">${item.date}</div>`;
+
+        const actions = document.createElement('div');
+        actions.className = 'flex items-center gap-1 shrink-0';
+
+        const btnLoad = document.createElement('button');
+        btnLoad.type = 'button';
+        btnLoad.textContent = 'Cargar';
+        btnLoad.className = 'px-1.5 py-0.5 rounded bg-sky-600/85 hover:bg-sky-500 text-white text-[9.5px] font-semibold transition';
+        btnLoad.onclick = () => {
+          if (hydrateStateFromPayload(item.payload)) {
+            syncAllGlobalInputsFromState();
+            refreshScopeUI();
+            animateCameraTo(state.activeView || 'iso');
+            showToast(`Diseño "${item.name}" restaurado`);
+          }
+        };
+
+        const btnDel = document.createElement('button');
+        btnDel.type = 'button';
+        btnDel.textContent = '×';
+        btnDel.title = 'Eliminar del historial';
+        btnDel.className = 'px-1.5 py-0.5 rounded bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white text-[10px] font-bold transition';
+        btnDel.onclick = () => {
+          const updated = getSavedDesignsList().filter((_, i) => i !== idx);
+          try {
+            localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updated));
+          } catch (_) {}
+          renderSavedDesignsList();
+        };
+
+        actions.appendChild(btnLoad);
+        actions.appendChild(btnDel);
+        row.appendChild(info);
+        row.appendChild(actions);
+        listEl.appendChild(row);
+      });
+    }
+
+    function saveCurrentDesignToHistory() {
+      const items = getSavedDesignsList();
+      const now = new Date();
+      const timeStr = now.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' }) +
+        ' ' +
+        now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+      const label = `COSMOS #${items.length + 1} · Viga ${state.beamHeight.toFixed(2)}m`;
+
+      items.unshift({
+        name: label,
+        date: timeStr,
+        payload: serializeStateToPayload(state),
+      });
+
+      try {
+        localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(items.slice(0, 12)));
+      } catch (_) {}
+      renderSavedDesignsList();
+      syncUrlAndAutosave(false);
+      showToast(`💾 Diseño guardado: "${label}"`);
+    }
+
+    // Constantes constructivas de almacén
+    const UPRIGHT_WIDTH = 0.09;
+    const PALLET_W = 1.00;
+    const PALLET_D = 1.20;
+    const PALLET_DECK_H = 0.145;
+
+    function getTargetRacks() {
+      if (state.activeScope === 'all') {
+        return RACK_IDS.map((id) => state.racks[id]);
+      }
+      if (state.activeScope.startsWith('aisle:')) {
+        const aId = parseInt(state.activeScope.split(':')[1], 10);
+        return RACK_IDS.map((id) => state.racks[id]).filter((r) => r.aisleId === aId);
+      }
+      const rId = state.activeScope.split(':')[1];
+      return [state.racks[rId] || state.racks['3A']];
+    }
+
+    function getReferenceRack() {
+      if (state.activeScope.startsWith('rack:')) {
+        return state.racks[state.activeScope.split(':')[1]] || state.racks['3A'];
+      }
+      if (state.activeScope.startsWith('aisle:')) {
+        const aId = parseInt(state.activeScope.split(':')[1], 10);
+        return state.racks[`${aId}A`];
+      }
+      return state.racks['3A'];
+    }
+
+    function getRackBays(rack) {
+      return rack.side === 'A' ? state.baysA : state.baysB;
+    }
+
+    function getRackFootprintDepth(rack) {
+      return rack.doubleDepth ? state.rackDepth * 2 + state.doubleDepthGap : state.rackDepth;
+    }
+
+    // CÁLCULO EXACTO DE ELEVACIONES INCLUYENDO EL ANCHO / PERALTE DEL LARGUERO:
+    // Nivel 1 (Piso): Y_apoyo[0] = 0.000 m
+    // Nivel k (k >= 1): Y_apoyo[k] = Y_apoyo[k-1] + LuzLibre[k-1] + beamHeight
+    // Cara inferior del larguero k: Y_inf[k] = Y_apoyo[k] - beamHeight
+    function getLevelElevations(rack) {
+      const elevations = [0];
+      let accSupportY = 0;
+      for (let i = 1; i < rack.levels; i++) {
+        const clearH = rack.levelHeights[i - 1] || 1.250;
+        accSupportY += clearH + state.beamHeight;
+        elevations.push(accSupportY);
+      }
+      return elevations;
+    }
+
+    // Altura libre real del túnel: desde el piso hasta la cara inferior de la viga puente superior
+    function getTunnelClearHeight(rack) {
+      const elevations = getLevelElevations(rack);
+      const cleared = Math.min(rack.tunnelLevels, rack.levels - 1);
+      return Math.max(0.5, elevations[cleared] - state.beamHeight);
+    }
+
+    // =========================================================================
+    // 2. ESCENA, CÁMARA, RENDERER E ILUMINACIÓN
+    // =========================================================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b0f17);
+    scene.fog = new THREE.FogExp2(0x0b0f17, 0.0045);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 320);
+    camera.position.set(22, 16, 25);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.maxPolarAngle = Math.PI / 2 - 0.02;
+    controls.minDistance = 2;
+    controls.maxDistance = 125;
+    controls.target.set(0, 2.2, 0);
+
+    const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 0.88);
+    hemiLight.position.set(0, 30, 0);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.45);
+    dirLight.position.set(24, 36, 28);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 2;
+    dirLight.shadow.camera.far = 115;
+    const sBound = 38;
+    dirLight.shadow.camera.left = -sBound;
+    dirLight.shadow.camera.right = sBound;
+    dirLight.shadow.camera.top = sBound;
+    dirLight.shadow.camera.bottom = -sBound;
+    dirLight.shadow.bias = -0.0005;
+    scene.add(dirLight);
+
+    const fillLight = new THREE.DirectionalLight(0x93c5fd, 0.45);
+    fillLight.position.set(-24, 16, -24);
+    scene.add(fillLight);
+
+    // =========================================================================
+    // 3. TEXTURAS PROCEDURALES Y MATERIALES (INCLUYENDO TÓTEM 3D COSMOS)
+    // =========================================================================
+    function createPerforatedSteelTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0B4F9F';
+      ctx.fillRect(0, 0, 128, 256);
+
+      const grad = ctx.createLinearGradient(0, 0, 128, 0);
+      grad.addColorStop(0, 'rgba(255,255,255,0.12)');
+      grad.addColorStop(0.5, 'rgba(255,255,255,0.0)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.22)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 128, 256);
+
+      ctx.fillStyle = '#051933';
+      for (let y = 16; y < 256; y += 32) {
+        [34, 94].forEach((x) => {
+          ctx.beginPath();
+          ctx.roundRect(x - 5, y - 8, 10, 16, 4);
+          ctx.fill();
+        });
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(1, 12);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function createConcreteFloorTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#1e2530';
+      ctx.fillRect(0, 0, 512, 512);
+
+      for (let i = 0; i < 9000; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const v = 26 + Math.floor(Math.random() * 18);
+        ctx.fillStyle = `rgb(${v},${v + 5},${v + 12})`;
+        ctx.fillRect(x, y, 2, 2);
+      }
+
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.75)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(1.5, 1.5, 509, 509);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(32, 32);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function createCardboardBoxTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#b6895b';
+      ctx.fillRect(0, 0, 256, 256);
+
+      ctx.strokeStyle = '#785532';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(0, 128);
+      ctx.lineTo(256, 128);
+      ctx.moveTo(128, 0);
+      ctx.lineTo(128, 256);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(214, 182, 138, 0.65)';
+      ctx.fillRect(0, 60, 256, 8);
+      ctx.fillRect(0, 188, 256, 8);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(22, 24, 34, 22);
+      ctx.fillRect(150, 152, 34, 22);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function createCosmosSignTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1024;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 1024, 256);
+
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(4, 4, 1016, 248);
+
+      ctx.fillStyle = '#0B4F9F';
+      ctx.fillRect(0, 0, 22, 256);
+
+      const drawWaveBand = (yBase, color) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(75, yBase);
+        ctx.bezierCurveTo(135, yBase - 24, 185, yBase + 26, 245, yBase);
+        ctx.bezierCurveTo(285, yBase - 18, 325, yBase + 16, 365, yBase - 4);
+        ctx.lineTo(365, yBase + 18);
+        ctx.bezierCurveTo(325, yBase + 38, 285, yBase + 4, 245, yBase + 22);
+        ctx.bezierCurveTo(185, yBase + 48, 135, yBase - 2, 75, yBase + 22);
+        ctx.closePath();
+        ctx.fill();
+      };
+
+      drawWaveBand(72, '#60A5FA');
+      drawWaveBand(114, '#1D4ED8');
+      drawWaveBand(156, '#071633');
+
+      ctx.fillStyle = '#071633';
+      ctx.font = '800 96px "Inter", sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('COSMOS', 405, 126);
+
+      ctx.fillStyle = '#475569';
+      ctx.font = '600 24px "JetBrains Mono", monospace';
+      ctx.fillText('ALMACÉN LOGÍSTICO · 3 PASILLOS', 410, 186);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      return tex;
+    }
+
+    const materials = {
+      uprightBlue: new THREE.MeshStandardMaterial({
+        map: createPerforatedSteelTexture(),
+        roughness: 0.42,
+        metalness: 0.55,
+      }),
+      galvanizedSteel: new THREE.MeshStandardMaterial({
+        color: 0xb8c4d0,
+        roughness: 0.35,
+        metalness: 0.78,
+      }),
+      beamOrange: new THREE.MeshStandardMaterial({
+        color: 0xf26522,
+        roughness: 0.38,
+        metalness: 0.45,
+      }),
+      guardOrange: new THREE.MeshStandardMaterial({
+        color: 0xff6b1a,
+        roughness: 0.35,
+        metalness: 0.35,
+      }),
+      yellowStripe: new THREE.MeshStandardMaterial({
+        color: 0xfacc15,
+        roughness: 0.6,
+        metalness: 0.05,
+      }),
+      aisleLaneTint: new THREE.MeshStandardMaterial({
+        color: 0x0ea5e9,
+        transparent: true,
+        opacity: 0.06,
+        roughness: 0.9,
+      }),
+      aisle3LaneTint: new THREE.MeshStandardMaterial({
+        color: 0xf97316,
+        transparent: true,
+        opacity: 0.08,
+        roughness: 0.9,
+      }),
+      woodPallet: new THREE.MeshStandardMaterial({
+        color: 0xc89d66,
+        roughness: 0.85,
+        metalness: 0.02,
+      }),
+      cargoBox: new THREE.MeshStandardMaterial({
+        map: createCardboardBoxTexture(),
+        roughness: 0.72,
+        metalness: 0.04,
+      }),
+      stretchFilm: new THREE.MeshPhysicalMaterial({
+        color: 0xe2e8f0,
+        transparent: true,
+        opacity: 0.24,
+        roughness: 0.15,
+        metalness: 0.0,
+        transmission: 0.15,
+      }),
+      cosmosSign: new THREE.MeshStandardMaterial({
+        map: createCosmosSignTexture(),
+        roughness: 0.38,
+        metalness: 0.12,
+      }),
+      dimLineCyan: new THREE.LineBasicMaterial({ color: 0x38bdf8 }),
+      dimLineOrange: new THREE.LineBasicMaterial({ color: 0xfb923c }),
+      dimLineGreen: new THREE.LineBasicMaterial({ color: 0x10b981 }),
+      dimLineYellow: new THREE.LineBasicMaterial({ color: 0xfacc15 }),
+    };
+
+    const floorMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(180, 180),
+      new THREE.MeshStandardMaterial({
+        map: createConcreteFloorTexture(),
+        roughness: 0.82,
+        metalness: 0.08,
+      })
+    );
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.receiveShadow = true;
+    scene.add(floorMesh);
+
+    const gridHelper = new THREE.GridHelper(120, 120, 0x334155, 0x1e293b);
+    gridHelper.position.y = 0.002;
+    scene.add(gridHelper);
+
+    const rackRootGroup = new THREE.Group();
+    const floorMarkingsGroup = new THREE.Group();
+    const dimensions3DGroup = new THREE.Group();
+    scene.add(rackRootGroup, floorMarkingsGroup, dimensions3DGroup);
+
+    // =========================================================================
+    // 4. FÁBRICA DE COMPONENTES ESTRUCTURALES 3D Y TÓTEM COSMOS
+    // =========================================================================
+    function calculateRowTotalLength(numBays, beamLength) {
+      if (numBays <= 0) return 0;
+      return numBays * beamLength + (numBays + 1) * UPRIGHT_WIDTH;
+    }
+
+    function createUprightFrame(height, depth) {
+      const group = new THREE.Group();
+      const postGeo = new THREE.BoxGeometry(UPRIGHT_WIDTH, height, 0.085);
+      const basePlateGeo = new THREE.BoxGeometry(0.15, 0.014, 0.15);
+
+      const zOffset = depth / 2 - 0.0425;
+      [-zOffset, zOffset].forEach((zPos) => {
+        const post = new THREE.Mesh(postGeo, materials.uprightBlue);
+        post.position.set(0, height / 2, zPos);
+        post.castShadow = true;
+        post.receiveShadow = true;
+        group.add(post);
+
+        const basePlate = new THREE.Mesh(basePlateGeo, materials.galvanizedSteel);
+        basePlate.position.set(0, 0.007, zPos);
+        group.add(basePlate);
+      });
+
+      const panelStep = 0.65;
+      const numPanels = Math.max(2, Math.floor((height - 0.25) / panelStep));
+      const actualStep = (height - 0.25) / numPanels;
+      const spanZ = depth - 0.085;
+
+      const horizGeo = new THREE.BoxGeometry(0.032, 0.032, spanZ);
+      const diagLen = Math.hypot(spanZ, actualStep);
+      const diagAngle = Math.atan2(actualStep, spanZ);
+      const diagGeo = new THREE.BoxGeometry(0.028, 0.028, diagLen);
+
+      for (let i = 0; i <= numPanels; i++) {
+        const yH = 0.15 + i * actualStep;
+        if (i === 0 || i === numPanels) {
+          const hBrace = new THREE.Mesh(horizGeo, materials.galvanizedSteel);
+          hBrace.position.set(0, yH, 0);
+          group.add(hBrace);
+        }
+        if (i < numPanels) {
+          const diag = new THREE.Mesh(diagGeo, materials.galvanizedSteel);
+          diag.position.set(0, yH + actualStep / 2, 0);
+          diag.rotation.x = i % 2 === 0 ? diagAngle : -diagAngle;
+          group.add(diag);
+        }
+      }
+
+      return group;
+    }
+
+    function createBeamPair(beamLength, beamHeight, rackDepth, yTopSurface) {
+      const group = new THREE.Group();
+      const beamThick = 0.05;
+      const beamGeo = new THREE.BoxGeometry(beamLength, beamHeight, beamThick);
+      const connectorGeo = new THREE.BoxGeometry(0.045, beamHeight + 0.055, 0.068);
+
+      const zOffset = rackDepth / 2 - beamThick / 2;
+      const yCenter = yTopSurface - beamHeight / 2;
+
+      [-zOffset, zOffset].forEach((zPos) => {
+        const beam = new THREE.Mesh(beamGeo, materials.beamOrange);
+        beam.position.set(0, yCenter, zPos);
+        beam.castShadow = true;
+        beam.receiveShadow = true;
+        group.add(beam);
+
+        [-beamLength / 2 + 0.02, beamLength / 2 - 0.02].forEach((xEnd) => {
+          const conn = new THREE.Mesh(connectorGeo, materials.beamOrange);
+          conn.position.set(xEnd, yCenter, zPos);
+          group.add(conn);
+        });
+      });
+
+      return group;
+    }
+
+    function createDepthTieBar(depthSpan, yTopSurface) {
+      const tie = new THREE.Mesh(
+        new THREE.BoxGeometry(0.045, 0.04, Math.max(0.12, depthSpan)),
+        materials.galvanizedSteel
+      );
+      tie.position.set(0, yTopSurface - 0.02, 0);
+      tie.castShadow = true;
+      return tie;
+    }
+
+    function createColumnProtector() {
+      const group = new THREE.Group();
+      const h = 0.42;
+      const w = 0.18;
+      const d = 0.18;
+      const t = 0.016;
+
+      const frontWall = new THREE.Mesh(new THREE.BoxGeometry(w, h, t), materials.guardOrange);
+      frontWall.position.set(0, h / 2, d / 2);
+      frontWall.castShadow = true;
+
+      const sideGeo = new THREE.BoxGeometry(t, h, d);
+      const leftWall = new THREE.Mesh(sideGeo, materials.guardOrange);
+      leftWall.position.set(-w / 2 + t / 2, h / 2, 0);
+      leftWall.castShadow = true;
+
+      const rightWall = new THREE.Mesh(sideGeo, materials.guardOrange);
+      rightWall.position.set(w / 2 - t / 2, h / 2, 0);
+      rightWall.castShadow = true;
+
+      const flange = new THREE.Mesh(new THREE.BoxGeometry(w + 0.05, 0.014, d + 0.05), materials.guardOrange);
+      flange.position.set(0, 0.007, 0);
+
+      group.add(frontWall, leftWall, rightWall, flange);
+      return group;
+    }
+
+    function createEndRowBarrier(spanDepth) {
+      const group = new THREE.Group();
+      const postH = 0.48;
+      const postGeo = new THREE.BoxGeometry(0.08, postH, 0.08);
+      const halfSpan = Math.max(0.35, spanDepth / 2 - 0.04);
+
+      [-halfSpan, halfSpan].forEach((zPos) => {
+        const post = new THREE.Mesh(postGeo, materials.guardOrange);
+        post.position.set(0, postH / 2, zPos);
+        post.castShadow = true;
+        group.add(post);
+      });
+
+      const railGeo = new THREE.CylinderGeometry(0.032, 0.032, halfSpan * 2 + 0.08, 14);
+      railGeo.rotateX(Math.PI / 2);
+
+      [0.20, 0.40].forEach((yRail) => {
+        const rail = new THREE.Mesh(railGeo, materials.guardOrange);
+        rail.position.set(0, yRail, 0);
+        rail.castShadow = true;
+        group.add(rail);
+      });
+
+      return group;
+    }
+
+    function createPalletWithLoad(netLoadHeight) {
+      const group = new THREE.Group();
+
+      const palletBase = new THREE.Mesh(
+        new THREE.BoxGeometry(PALLET_W, PALLET_DECK_H, PALLET_D),
+        materials.woodPallet
+      );
+      palletBase.position.y = PALLET_DECK_H / 2;
+      palletBase.castShadow = true;
+      palletBase.receiveShadow = true;
+      group.add(palletBase);
+
+      const cargoH = Math.max(0.30, Math.min(2.65, netLoadHeight - PALLET_DECK_H - 0.14));
+      const cargoW = PALLET_W - 0.06;
+      const cargoD = PALLET_D - 0.06;
+
+      const cargoMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(cargoW, cargoH, cargoD),
+        materials.cargoBox
+      );
+      cargoMesh.position.y = PALLET_DECK_H + cargoH / 2;
+      cargoMesh.castShadow = true;
+      cargoMesh.receiveShadow = true;
+      group.add(cargoMesh);
+
+      const filmMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(cargoW + 0.015, cargoH * 0.94, cargoD + 0.015),
+        materials.stretchFilm
+      );
+      filmMesh.position.y = PALLET_DECK_H + cargoH / 2;
+      group.add(filmMesh);
+
+      return group;
+    }
+
+    function createCosmosTotem(xPos, zPos) {
+      const group = new THREE.Group();
+      group.position.set(xPos, 0, zPos);
+
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.04, 3.6), materials.galvanizedSteel);
+      base.position.set(0, 0.02, 0);
+      base.receiveShadow = true;
+      group.add(base);
+
+      const postGeo = new THREE.BoxGeometry(0.10, 4.3, 0.10);
+      [-1.45, 1.45].forEach((zOff) => {
+        const post = new THREE.Mesh(postGeo, materials.uprightBlue);
+        post.position.set(0, 2.15, zOff);
+        post.castShadow = true;
+        group.add(post);
+      });
+
+      const boardW = 3.4;
+      const boardH = 0.85;
+      const boardGeo = new THREE.BoxGeometry(0.06, boardH, boardW);
+      const sideMat = new THREE.MeshStandardMaterial({ color: 0x071633, roughness: 0.4, metalness: 0.5 });
+      const boardMats = [
+        materials.cosmosSign,
+        materials.cosmosSign,
+        sideMat,
+        sideMat,
+        sideMat,
+        sideMat,
+      ];
+      const board = new THREE.Mesh(boardGeo, boardMats);
+      board.position.set(0, 4.45, 0);
+      board.castShadow = true;
+      group.add(board);
+
+      return group;
+    }
+
+    // =========================================================================
+    // 5. GEOMETRÍA DE LOS 6 RACKS (SOPORTE DOBLE PROFUNDIDAD 2F + DOBLE NIVEL 2X)
+    // =========================================================================
+    const aisleCenterZMap = { 1: 0, 2: 0, 3: 0 };
+    const rackCenterZMap = {};
+    let dimensionAnchors = [];
+
+    function buildSingleRackLine(rack, zCenter, frontDirection, startX, availableSlots) {
+      const numBays = getRackBays(rack);
+      if (numBays <= 0) return;
+
+      const elevations = getLevelElevations(rack);
+      const bayPitch = state.beamLength + UPRIGHT_WIDTH;
+      const is2F = rack.doubleDepth;
+
+      const lineStepZ = state.rackDepth + state.doubleDepthGap;
+      const lineZOffsets = is2F
+        ? [-frontDirection * (lineStepZ / 2), +frontDirection * (lineStepZ / 2)]
+        : [0];
+
+      lineZOffsets.forEach((zOff, depthIdx) => {
+        const zLine = zCenter + zOff;
+        const zFrontLine = zLine + frontDirection * (state.rackDepth / 2);
+
+        for (let i = 0; i <= numBays; i++) {
+          const xFrame = startX + UPRIGHT_WIDTH / 2 + i * bayPitch;
+          const frame = createUprightFrame(rack.rackHeight, state.rackDepth);
+          frame.position.set(xFrame, 0, zLine);
+          rackRootGroup.add(frame);
+
+          if (state.showGuards && depthIdx === 0) {
+            const guard = createColumnProtector();
+            guard.position.set(xFrame, 0, zFrontLine + frontDirection * 0.03);
+            if (frontDirection < 0) guard.rotation.y = Math.PI;
+            rackRootGroup.add(guard);
+          }
+        }
+      });
+
+      if (is2F) {
+        const tieSpan = state.doubleDepthGap + 0.08;
+        for (let i = 0; i <= numBays; i++) {
+          const xFrame = startX + UPRIGHT_WIDTH / 2 + i * bayPitch;
+          [0.9, rack.rackHeight - 0.35].forEach((yTie) => {
+            if (yTie > 0.3) {
+              const tie = new THREE.Mesh(
+                new THREE.BoxGeometry(0.05, 0.05, tieSpan),
+                materials.galvanizedSteel
+              );
+              tie.position.set(xFrame, yTie, zCenter);
+              rackRootGroup.add(tie);
+            }
+          });
+        }
+      }
+
+      const palletsPerBay = Math.max(1, Math.floor((state.beamLength - 0.12) / (PALLET_W + 0.08)));
+
+      for (let b = 0; b < numBays; b++) {
+        const bayNumber = b + 1;
+        const isTunnel = rack.tunnels.has(bayNumber);
+        const xBayCenter = startX + UPRIGHT_WIDTH + b * bayPitch + state.beamLength / 2;
+        const clearedLevels = isTunnel ? Math.min(rack.tunnelLevels, rack.levels - 1) : 0;
+
+        const activeLevelsInBay = [];
+        for (let lvl = 0; lvl < rack.levels; lvl++) {
+          const levelNumber = lvl + 1;
+          const tramoKey = `${bayNumber}-${levelNumber}`;
+
+          if (isTunnel && lvl < clearedLevels) {
+            activeLevelsInBay.push(false);
+            continue;
+          }
+          if (lvl >= 1 && (rack.disabledLevels.has(lvl) || rack.disabledTramos.has(tramoKey))) {
+            activeLevelsInBay.push(false);
+            continue;
+          }
+          activeLevelsInBay.push(true);
+        }
+
+        for (let lvl = 0; lvl < rack.levels; lvl++) {
+          if (!activeLevelsInBay[lvl]) continue;
+
+          const yPalletBase = elevations[lvl];
+
+          lineZOffsets.forEach((zOff) => {
+            const zLine = zCenter + zOff;
+            if (lvl >= 1) {
+              const beamPair = createBeamPair(state.beamLength, state.beamHeight, state.rackDepth, yPalletBase);
+              beamPair.position.set(xBayCenter, 0, zLine);
+              rackRootGroup.add(beamPair);
+            }
+          });
+
+          if (is2F && lvl >= 1) {
+            [-state.beamLength * 0.32, state.beamLength * 0.32].forEach((xTie) => {
+              const tieBar = createDepthTieBar(lineStepZ, yPalletBase);
+              tieBar.position.x = xBayCenter + xTie;
+              tieBar.position.z = zCenter;
+              rackRootGroup.add(tieBar);
+            });
+          }
+
+          let nextActiveLvl = -1;
+          for (let up = lvl + 1; up < rack.levels; up++) {
+            if (activeLevelsInBay[up]) {
+              nextActiveLvl = up;
+              break;
+            }
+          }
+
+          let netLoadHeight;
+          if (nextActiveLvl !== -1) {
+            netLoadHeight = Math.max(0.4, elevations[nextActiveLvl] - state.beamHeight - yPalletBase);
+          } else {
+            const topSpace = Math.max(rack.levelHeights[lvl] || 1.250, rack.rackHeight - yPalletBase);
+            netLoadHeight = Math.max(0.4, topSpace - state.beamHeight);
+          }
+
+          const totalPalletsW = palletsPerBay * PALLET_W;
+          const freeGap = Math.max(0.06, (state.beamLength - totalPalletsW) / (palletsPerBay + 1));
+
+          lineZOffsets.forEach((zOff, depthIdx) => {
+            const zPallet = zCenter + zOff;
+            for (let p = 0; p < palletsPerBay; p++) {
+              const xPallet =
+                xBayCenter - state.beamLength / 2 + freeGap + PALLET_W / 2 + p * (PALLET_W + freeGap);
+
+              availableSlots.push({
+                x: xPallet,
+                y: yPalletBase,
+                z: zPallet,
+                netLoadHeight,
+                bayIndex: b,
+                levelIndex: lvl,
+                depthIndex: depthIdx,
+                palletIndex: p,
+              });
+            }
+          });
+        }
+      }
+    }
+
+    function populatePalletsInRack(rack, slots) {
+      if (!state.showPallets || rack.palletCount <= 0 || slots.length === 0) return;
+
+      const ordered = [...slots];
+
+      if (rack.fillPattern === 'bottom-up') {
+        ordered.sort((a, b) => {
+          if (a.levelIndex !== b.levelIndex) return a.levelIndex - b.levelIndex;
+          if (a.bayIndex !== b.bayIndex) return a.bayIndex - b.bayIndex;
+          if (a.depthIndex !== b.depthIndex) return a.depthIndex - b.depthIndex;
+          return a.palletIndex - b.palletIndex;
+        });
+      } else if (rack.fillPattern === 'random') {
+        let seed = rack.randomSeed || 42;
+        const nextRand = () => {
+          seed = (seed * 1664525 + 1013904223) % 4294967296;
+          return seed / 4294967296;
+        };
+        for (let i = ordered.length - 1; i > 0; i--) {
+          const j = Math.floor(nextRand() * (i + 1));
+          [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+        }
+      }
+
+      const countToPlace = Math.min(rack.palletCount, ordered.length);
+      for (let i = 0; i < countToPlace; i++) {
+        const slot = ordered[i];
+        const pallet = createPalletWithLoad(slot.netLoadHeight);
+        pallet.position.set(slot.x, slot.y, slot.z);
+        rackRootGroup.add(pallet);
+      }
+    }
+
+    function addBackToBackSpacers(rackLeft, zLeftFront, rackRight, zRightFront, startX) {
+      const minBays = Math.min(getRackBays(rackLeft), getRackBays(rackRight));
+      const minH = Math.min(rackLeft.rackHeight, rackRight.rackHeight);
+      const bayPitch = state.beamLength + UPRIGHT_WIDTH;
+      const zMid = (zLeftFront + zRightFront) / 2;
+      const spacerGeo = new THREE.BoxGeometry(0.055, 0.055, state.backToBackSpacer);
+
+      for (let i = 0; i <= minBays; i++) {
+        const xF = startX + UPRIGHT_WIDTH / 2 + i * bayPitch;
+        [0.85, minH - 0.45].forEach((ySp) => {
+          if (ySp > 0.3) {
+            const sp = new THREE.Mesh(spacerGeo, materials.galvanizedSteel);
+            sp.position.set(xF, ySp, zMid);
+            rackRootGroup.add(sp);
+          }
+        });
+      }
+    }
+
+    function addFloorSafetyPerimeter(startX, totalLen, zMin, zMax) {
+      const pad = 0.16;
+      const lineW = 0.07;
+      const x1 = startX - pad;
+      const x2 = startX + totalLen + pad;
+      const z1 = zMin - pad;
+      const z2 = zMax + pad;
+      const w = x2 - x1;
+      const d = z2 - z1;
+      const cx = (x1 + x2) / 2;
+      const cz = (z1 + z2) / 2;
+
+      const strips = [
+        { w, d: lineW, x: cx, z: z1 },
+        { w, d: lineW, x: cx, z: z2 },
+        { w: lineW, d, x: x1, z: cz },
+        { w: lineW, d, x: x2, z: cz },
+      ];
+
+      strips.forEach((s) => {
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(s.w, s.d), materials.yellowStripe);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(s.x, 0.004, s.z);
+        floorMarkingsGroup.add(mesh);
+      });
+    }
+
+    function drawDimensionLine(p1, p2, material, text, cssClass = 'dim-label', offsetLabel = new THREE.Vector3()) {
+      const points = [p1, p2];
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      dimensions3DGroup.add(new THREE.Line(geo, material));
+
+      const dir = new THREE.Vector3().subVectors(p2, p1).normalize();
+      const perp = Math.abs(dir.y) > 0.9 ? new THREE.Vector3(0.14, 0, 0) : new THREE.Vector3(0, 0.14, 0);
+
+      [p1, p2].forEach((pt) => {
+        const tickGeo = new THREE.BufferGeometry().setFromPoints([
+          pt.clone().sub(perp),
+          pt.clone().add(perp),
+        ]);
+        dimensions3DGroup.add(new THREE.Line(tickGeo, material));
+      });
+
+      const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5).add(offsetLabel);
+      dimensionAnchors.push({ position: mid, text, cssClass });
+    }
+
+    function rebuildScene() {
+      rackRootGroup.clear();
+      floorMarkingsGroup.clear();
+      dimensions3DGroup.clear();
+      dimensionAnchors = [];
+
+      const lenA = calculateRowTotalLength(state.baysA, state.beamLength);
+      const lenB = calculateRowTotalLength(state.baysB, state.beamLength);
+      const maxLen = Math.max(lenA, lenB, 4);
+      const startX = -maxLen / 2;
+      const sep = state.backToBackSpacer;
+      const w1 = state.aisleWidths[1];
+      const w2 = state.aisleWidths[2];
+      const w3 = state.aisleWidths[3];
+
+      const fp1A = getRackFootprintDepth(state.racks['1A']);
+      const fp1B = getRackFootprintDepth(state.racks['1B']);
+      const fp2A = getRackFootprintDepth(state.racks['2A']);
+      const fp2B = getRackFootprintDepth(state.racks['2B']);
+      const fp3A = getRackFootprintDepth(state.racks['3A']);
+      const fp3B = getRackFootprintDepth(state.racks['3B']);
+
+      aisleCenterZMap[2] = 0;
+
+      rackCenterZMap['2A'] = -(w2 / 2 + fp2A / 2);
+      rackCenterZMap['2B'] = +(w2 / 2 + fp2B / 2);
+
+      const z2ANorthEdge = rackCenterZMap['2A'] - fp2A / 2;
+      rackCenterZMap['1B'] = z2ANorthEdge - sep - fp1B / 2;
+      const z1BNorthEdge = rackCenterZMap['1B'] - fp1B / 2;
+      aisleCenterZMap[1] = z1BNorthEdge - w1 / 2;
+      rackCenterZMap['1A'] = aisleCenterZMap[1] - w1 / 2 - fp1A / 2;
+
+      const z2BSouthEdge = rackCenterZMap['2B'] + fp2B / 2;
+      rackCenterZMap['3A'] = z2BSouthEdge + sep + fp3A / 2;
+      const z3ASouthEdge = rackCenterZMap['3A'] + fp3A / 2;
+      aisleCenterZMap[3] = z3ASouthEdge + w3 / 2;
+      rackCenterZMap['3B'] = aisleCenterZMap[3] + w3 / 2 + fp3B / 2;
+
+      const rackActualMaxSlots = {};
+      const refRack = getReferenceRack();
+
+      RACK_IDS.forEach((rId) => {
+        const rack = state.racks[rId];
+        const zC = rackCenterZMap[rId];
+        const frontDir = rack.side === 'A' ? 1 : -1;
+        const slots = [];
+
+        buildSingleRackLine(rack, zC, frontDir, startX, slots);
+
+        rackActualMaxSlots[rId] = slots.length;
+        if (rack.palletCount > slots.length) {
+          rack.palletCount = slots.length;
+        }
+        populatePalletsInRack(rack, slots);
+
+        if (state.showDimensions) {
+          const tags = [];
+          if (rack.doubleDepth) tags.push('2F');
+          if (rack.disabledLevels.size > 0) tags.push('2X');
+          const tagSuffix = tags.length > 0 ? ` · ${tags.join('+')}` : '';
+          dimensionAnchors.push({
+            position: new THREE.Vector3(startX - 0.55, rack.rackHeight + 0.18, zC),
+            text: `RACK ${rId} (${rack.rackHeight.toFixed(2)}m${tagSuffix})`,
+            cssClass: rId === refRack.id ? 'dim-label rack-tag active-rack' : 'dim-label rack-tag',
+          });
+        }
+      });
+
+      addBackToBackSpacers(state.racks['1B'], z2ANorthEdge, state.racks['2A'], z2ANorthEdge, startX);
+      addBackToBackSpacers(state.racks['2B'], z2BSouthEdge, state.racks['3A'], z2BSouthEdge, startX);
+
+      // Bloque 1: Rack 1A
+      addFloorSafetyPerimeter(startX, lenA, rackCenterZMap['1A'] - fp1A / 2, rackCenterZMap['1A'] + fp1A / 2);
+      if (state.showGuards) {
+        const b1L = createEndRowBarrier(fp1A);
+        b1L.position.set(startX - 0.24, 0, rackCenterZMap['1A']);
+        const b1R = createEndRowBarrier(fp1A);
+        b1R.position.set(startX + lenA + 0.24, 0, rackCenterZMap['1A']);
+        rackRootGroup.add(b1L, b1R);
+      }
+
+      // Bloque 2: Par espalda-espalda Rack 1B + Rack 2A
+      const maxLenPair1 = Math.max(lenB, lenA);
+      const zPair1Min = rackCenterZMap['1B'] - fp1B / 2;
+      const zPair1Max = rackCenterZMap['2A'] + fp2A / 2;
+      const zPair1Mid = (zPair1Min + zPair1Max) / 2;
+      addFloorSafetyPerimeter(startX, maxLenPair1, zPair1Min, zPair1Max);
+      if (state.showGuards) {
+        const b2L = createEndRowBarrier(zPair1Max - zPair1Min);
+        b2L.position.set(startX - 0.24, 0, zPair1Mid);
+        const b2R = createEndRowBarrier(zPair1Max - zPair1Min);
+        b2R.position.set(startX + maxLenPair1 + 0.24, 0, zPair1Mid);
+        rackRootGroup.add(b2L, b2R);
+      }
+
+      // Bloque 3: Par espalda-espalda Rack 2B + Rack 3A
+      const zPair2Min = rackCenterZMap['2B'] - fp2B / 2;
+      const zPair2Max = rackCenterZMap['3A'] + fp3A / 2;
+      const zPair2Mid = (zPair2Min + zPair2Max) / 2;
+      addFloorSafetyPerimeter(startX, maxLenPair1, zPair2Min, zPair2Max);
+      if (state.showGuards) {
+        const b3L = createEndRowBarrier(zPair2Max - zPair2Min);
+        b3L.position.set(startX - 0.24, 0, zPair2Mid);
+        const b3R = createEndRowBarrier(zPair2Max - zPair2Min);
+        b3R.position.set(startX + maxLenPair1 + 0.24, 0, zPair2Mid);
+        rackRootGroup.add(b3L, b3R);
+      }
+
+      // Bloque 4: Rack 3B
+      addFloorSafetyPerimeter(startX, lenB, rackCenterZMap['3B'] - fp3B / 2, rackCenterZMap['3B'] + fp3B / 2);
+      if (state.showGuards) {
+        const b4L = createEndRowBarrier(fp3B);
+        b4L.position.set(startX - 0.24, 0, rackCenterZMap['3B']);
+        const b4R = createEndRowBarrier(fp3B);
+        b4R.position.set(startX + lenB + 0.24, 0, rackCenterZMap['3B']);
+        rackRootGroup.add(b4L, b4R);
+      }
+
+      // Tótem 3D COSMOS junto a los pasillos
+      const cosmosTotem = createCosmosTotem(startX + maxLen + 2.4, aisleCenterZMap[2]);
+      rackRootGroup.add(cosmosTotem);
+
+      // Franjas y etiquetas de los 3 Pasillos
+      [
+        { id: 1, title: 'PASILLO 1', w: w1 },
+        { id: 2, title: 'PASILLO 2', w: w2 },
+        { id: 3, title: 'PASILLO 3', w: w3 },
+      ].forEach((p) => {
+        const zAisle = aisleCenterZMap[p.id];
+        const laneMesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(maxLen + 0.6, p.w),
+          p.id === 3 ? materials.aisle3LaneTint : materials.aisleLaneTint
+        );
+        laneMesh.rotation.x = -Math.PI / 2;
+        laneMesh.position.set(0, 0.003, zAisle);
+        floorMarkingsGroup.add(laneMesh);
+
+        if (state.showDimensions) {
+          dimensionAnchors.push({
+            position: new THREE.Vector3(startX - 0.65, 0.45, zAisle),
+            text: `${p.title} (${p.w.toFixed(2)}m)`,
+            cssClass: p.id === 3 ? 'dim-label aisle-banner aisle-3' : 'dim-label aisle-banner',
+          });
+        }
+      });
+
+      // Cotas dinámicas 3D del rack de referencia activo (incluyendo peralte de larguero)
+      if (state.showDimensions) {
+        const zRefC = rackCenterZMap[refRack.id];
+        const refFp = getRackFootprintDepth(refRack);
+        const frontDir = refRack.side === 'A' ? 1 : -1;
+        const zFrontFace = zRefC + frontDir * (refFp / 2 + 0.08);
+        const elevations = getLevelElevations(refRack);
+        const bayPitch = state.beamLength + UPRIGHT_WIDTH;
+        const numBays = getRackBays(refRack);
+        const rowLen = calculateRowTotalLength(numBays, state.beamLength);
+        const xLeftEdge = startX - 0.35;
+
+        drawDimensionLine(
+          new THREE.Vector3(xLeftEdge, 0, zFrontFace),
+          new THREE.Vector3(xLeftEdge, refRack.rackHeight, zFrontFace),
+          materials.dimLineCyan,
+          `H ${refRack.id}: ${refRack.rackHeight.toFixed(2)} m`,
+          'dim-label',
+          new THREE.Vector3(-0.75, 0, 0)
+        );
+
+        for (let lvl = 1; lvl < refRack.levels; lvl++) {
+          const yLvl = elevations[lvl];
+          const clearH = refRack.levelHeights[lvl - 1] || 1.250;
+          const xTick = startX + UPRIGHT_WIDTH + 0.15;
+          drawDimensionLine(
+            new THREE.Vector3(xTick, 0, zFrontFace),
+            new THREE.Vector3(xTick, yLvl, zFrontFace),
+            materials.dimLineOrange,
+            `N${lvl + 1}: ${yLvl.toFixed(3)}m (Luz ${clearH.toFixed(2)} + ${state.beamHeight.toFixed(2)})`,
+            'dim-label level',
+            new THREE.Vector3(0.95, yLvl / 2 - 0.12, 0)
+          );
+        }
+
+        drawDimensionLine(
+          new THREE.Vector3(startX, refRack.rackHeight + 0.42, zFrontFace),
+          new THREE.Vector3(startX + rowLen, refRack.rackHeight + 0.42, zFrontFace),
+          materials.dimLineYellow,
+          `Rack ${refRack.id} (${numBays} bahías): ${rowLen.toFixed(2)} m`,
+          'dim-label row-total',
+          new THREE.Vector3(0, 0.28, 0)
+        );
+
+        const tunnelClearH = getTunnelClearHeight(refRack);
+        refRack.tunnels.forEach((bayNum) => {
+          if (bayNum <= numBays) {
+            const xTun = startX + UPRIGHT_WIDTH + (bayNum - 1) * bayPitch + state.beamLength / 2;
+            drawDimensionLine(
+              new THREE.Vector3(xTun, 0, zFrontFace),
+              new THREE.Vector3(xTun, tunnelClearH, zFrontFace),
+              materials.dimLineGreen,
+              `Túnel ${refRack.id}-B${bayNum}: ${tunnelClearH.toFixed(3)} m libre`,
+              'dim-label tunnel',
+              new THREE.Vector3(0, 0, frontDir * 0.16)
+            );
+          }
+        });
+      }
+
+      updateMetricsAndValidations(lenA, lenB, rackActualMaxSlots);
+      syncDimensionDOMElements();
+      syncUrlAndAutosave(false);
+    }
+
+    // =========================================================================
+    // 6. VALIDACIONES NORMATIVAS, KPIs Y DESGLOSE MATEMÁTICO CON PERALTE
+    // =========================================================================
+    function setAlertBadge(el, status, text) {
+      const dot = el.querySelector('span:first-child');
+      const label = el.querySelector('span:last-child');
+      label.textContent = text;
+
+      el.className = 'flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md border font-medium ';
+      dot.className = 'w-2 h-2 rounded-full ';
+
+      if (status === 'ok') {
+        el.className += 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300';
+        dot.className += 'bg-emerald-400';
+      } else if (status === 'warn') {
+        el.className += 'bg-amber-950/70 border-amber-500/40 text-amber-300';
+        dot.className += 'bg-amber-400';
+      } else {
+        el.className += 'bg-rose-950/80 border-rose-500/50 text-rose-300';
+        dot.className += 'bg-rose-500 animate-ping';
+      }
+    }
+
+    function updateMetricsAndValidations(lenA, lenB, rackActualMaxSlots) {
+      const refRack = getReferenceRack();
+      const elevations = getLevelElevations(refRack);
+      const topBeamY = elevations[elevations.length - 1];
+      const topMargin = refRack.rackHeight - topBeamY;
+      const numBeamTiers = Math.max(0, refRack.levels - 1);
+
+      let sumClear = 0;
+      const netClearances = [];
+      for (let i = 0; i < numBeamTiers; i++) {
+        const cH = refRack.levelHeights[i] || 1.250;
+        sumClear += cH;
+        netClearances.push(cH);
+      }
+      const sumBeams = numBeamTiers * state.beamHeight;
+      const minNetClearance = netClearances.length > 0 ? Math.min(...netClearances) : 1.250;
+      const maxNetClearance = netClearances.length > 0 ? Math.max(...netClearances) : 1.250;
+
+      for (let i = 0; i < numBeamTiers; i++) {
+        const badgeEl = document.getElementById(`lvl-summary-${i}`);
+        if (badgeEl) {
+          const yTop = elevations[i + 1];
+          const clearH = refRack.levelHeights[i] || 1.250;
+          badgeEl.textContent = `Luz ${clearH.toFixed(2)}m + Viga ${state.beamHeight.toFixed(2)}m → Cota N${i + 2}: ${yTop.toFixed(3)}m`;
+        }
+      }
+
+      document.getElementById('calc-n-minus-1').textContent = numBeamTiers;
+      document.getElementById('calc-sum-clear').textContent = `${sumClear.toFixed(3)} m`;
+      document.getElementById('calc-beam-count').textContent = numBeamTiers;
+      document.getElementById('calc-beam-thick').textContent = state.beamHeight.toFixed(2);
+      document.getElementById('calc-sum-beams').textContent = `+${sumBeams.toFixed(3)} m`;
+      document.getElementById('calc-top-beam').textContent = `${topBeamY.toFixed(3)} m`;
+      document.getElementById('calc-top-margin').textContent = `${topMargin.toFixed(3)} m`;
+      document.getElementById('calc-net-clearance').textContent =
+        Math.abs(maxNetClearance - minNetClearance) < 0.001
+          ? `${minNetClearance.toFixed(3)} m`
+          : `${minNetClearance.toFixed(2)} – ${maxNetClearance.toFixed(2)} m`;
+
+      const clearedLevels = Math.min(refRack.tunnelLevels, refRack.levels - 1);
+      const tunnelClearH = getTunnelClearHeight(refRack);
+      document.getElementById('tunnel-levels-badge').textContent =
+        clearedLevels === 1 ? 'Libera N1' : `Libera N1–N${clearedLevels}`;
+      document.getElementById('tunnel-clear-height-preview').textContent =
+        `Luz libre bajo viga: ${tunnelClearH.toFixed(3)} m`;
+
+      let totalSlotsAll = 0;
+      let totalPlacedAll = 0;
+      const aisleStats = { 1: { p: 0, m: 0 }, 2: { p: 0, m: 0 }, 3: { p: 0, m: 0 } };
+
+      RACK_IDS.forEach((id) => {
+        const r = state.racks[id];
+        const maxS = rackActualMaxSlots[id] || 0;
+        const placedS = state.showPallets ? r.palletCount : 0;
+        totalSlotsAll += maxS;
+        totalPlacedAll += placedS;
+        aisleStats[r.aisleId].p += placedS;
+        aisleStats[r.aisleId].m += maxS;
+      });
+
+      const pctAll = totalSlotsAll > 0 ? (totalPlacedAll / totalSlotsAll) * 100 : 0;
+      document.getElementById('kpi-placed-pallets').textContent = totalPlacedAll;
+      document.getElementById('kpi-total-pallets').textContent = totalSlotsAll;
+      document.getElementById('kpi-occupancy-pct').textContent = `${pctAll.toFixed(1)}%`;
+      document.getElementById('kpi-deductions-summary').textContent =
+        `P1:${aisleStats[1].p}/${aisleStats[1].m} · P2:${aisleStats[2].p}/${aisleStats[2].m} · P3:${aisleStats[3].p}/${aisleStats[3].m}`;
+
+      const targetRacks = getTargetRacks();
+      const targetMax = targetRacks.reduce((acc, r) => acc + (rackActualMaxSlots[r.id] || 0), 0);
+      const targetPlaced = targetRacks.reduce((acc, r) => acc + (state.showPallets ? r.palletCount : 0), 0);
+      const targetPct = targetMax > 0 ? (targetPlaced / targetMax) * 100 : 0;
+
+      const sliderPallet = document.getElementById('slider-pallet-count');
+      const inpPallet = document.getElementById('inp-pallet-count');
+      sliderPallet.max = targetMax;
+      inpPallet.max = targetMax;
+      sliderPallet.value = targetPlaced;
+      inpPallet.value = targetPlaced;
+
+      const scopeName = getScopeDisplayName();
+      document.getElementById('occupancy-target-title').textContent = `Pallets en ${scopeName}:`;
+      document.getElementById('sidebar-occupancy-label').textContent =
+        `${targetPlaced} / ${targetMax} (${targetPct.toFixed(1)}%)`;
+
+      document.getElementById('kpi-len-a').textContent = lenA.toFixed(2);
+      document.getElementById('kpi-len-b').textContent = lenB.toFixed(2);
+      document.getElementById('kpi-aisle-widths').textContent =
+        `P1:${state.aisleWidths[1].toFixed(2)}m · P2:${state.aisleWidths[2].toFixed(2)}m · P3:${state.aisleWidths[3].toFixed(2)}m · Viga:${state.beamHeight.toFixed(2)}m`;
+
+      const elTopAlert = document.getElementById('alert-top-clearance');
+      if (topMargin < 0) {
+        setAlertBadge(elTopAlert, 'err', `Error ${refRack.id}: Excede bastidor (${topMargin.toFixed(2)} m)`);
+      } else if (topMargin < 0.25) {
+        setAlertBadge(elTopAlert, 'warn', `Resguardo ${refRack.id}: ${topMargin.toFixed(3)} m (< 0.25 m)`);
+      } else {
+        setAlertBadge(elTopAlert, 'ok', `Resguardo ${refRack.id}: ${topMargin.toFixed(3)} m`);
+      }
+
+      const elBeamAlert = document.getElementById('alert-beam-clearance');
+      if (minNetClearance < 1.0) {
+        setAlertBadge(elBeamAlert, 'warn', `Luz Libre ${refRack.id}: ${minNetClearance.toFixed(3)} m (< 1.00 m)`);
+      } else {
+        setAlertBadge(elBeamAlert, 'ok', `Luz Libre ${refRack.id}: ${minNetClearance.toFixed(3)} m`);
+      }
+
+      const totalTunnels = targetRacks.reduce((acc, r) => acc + r.tunnels.size, 0);
+      const elTunnelAlert = document.getElementById('alert-tunnel-clearance');
+      if (totalTunnels > 0) {
+        elTunnelAlert.classList.remove('hidden');
+        if (tunnelClearH < 2.20) {
+          setAlertBadge(elTunnelAlert, 'warn', `Túnel ${refRack.id}: ${tunnelClearH.toFixed(3)} m (Bajo)`);
+        } else {
+          setAlertBadge(elTunnelAlert, 'ok', `Túnel ${refRack.id}: ${tunnelClearH.toFixed(3)} m`);
+        }
+      } else {
+        elTunnelAlert.classList.add('hidden');
+      }
+    }
+
+    function getScopeDisplayName() {
+      if (state.activeScope === 'all') return 'Todos (6 Racks)';
+      if (state.activeScope.startsWith('aisle:')) {
+        return `Pasillo ${state.activeScope.split(':')[1]}`;
+      }
+      return `Rack ${state.activeScope.split(':')[1]}`;
+    }
+
+    // =========================================================================
+    // 7. ETIQUETAS 2D PROYECTADAS SOBRE EL CANVAS
+    // =========================================================================
+    const overlayContainer = document.getElementById('dimensions-overlay');
+    let labelDOMPool = [];
+
+    function syncDimensionDOMElements() {
+      overlayContainer.innerHTML = '';
+      labelDOMPool = [];
+      if (!state.showDimensions) return;
+
+      dimensionAnchors.forEach((anchor) => {
+        const div = document.createElement('div');
+        div.className = anchor.cssClass;
+        div.textContent = anchor.text;
+        overlayContainer.appendChild(div);
+        labelDOMPool.push({ el: div, position: anchor.position });
+      });
+    }
+
+    const tempVec = new THREE.Vector3();
+    function updateProjectedLabels() {
+      if (!state.showDimensions || labelDOMPool.length === 0) return;
+
+      const halfW = window.innerWidth / 2;
+      const halfH = window.innerHeight / 2;
+
+      for (let i = 0; i < labelDOMPool.length; i++) {
+        const item = labelDOMPool[i];
+        tempVec.copy(item.position).project(camera);
+
+        if (tempVec.z > 1) {
+          item.el.style.display = 'none';
+        } else {
+          item.el.style.display = 'block';
+          const x = tempVec.x * halfW + halfW;
+          const y = -tempVec.y * halfH + halfH;
+          item.el.style.left = `${x}px`;
+          item.el.style.top = `${y}px`;
+        }
+      }
+    }
+
+    // =========================================================================
+    // 8. RENDERIZADO DE CONTROLES DINÁMICOS Y SINCRONIZACIÓN DE UI
+    // =========================================================================
+    function syncAllGlobalInputsFromState() {
+      document.getElementById('inp-beam-length').value = state.beamLength;
+      document.getElementById('inp-beam-height').value = state.beamHeight;
+      document.getElementById('inp-beam-height-top').value = state.beamHeight;
+      document.getElementById('inp-rack-depth').value = state.rackDepth;
+      document.getElementById('inp-double-depth-gap').value = state.doubleDepthGap;
+      document.getElementById('inp-back-spacer').value = state.backToBackSpacer;
+      document.getElementById('inp-bays-a').value = state.baysA;
+      document.getElementById('inp-bays-b').value = state.baysB;
+      document.getElementById('inp-aisle-1').value = state.aisleWidths[1];
+      document.getElementById('inp-aisle-2').value = state.aisleWidths[2];
+      document.getElementById('inp-aisle-3').value = state.aisleWidths[3];
+      document.getElementById('chk-pallets').checked = state.showPallets;
+      document.getElementById('pallet-occupancy-controls').style.opacity = state.showPallets ? '1' : '0.45';
+      document.getElementById('chk-dimensions').checked = state.showDimensions;
+      document.getElementById('chk-guards').checked = state.showGuards;
+    }
+
+    function renderIndividualLevelInputs() {
+      const refRack = getReferenceRack();
+      const container = document.getElementById('individual-levels-container');
+      container.innerHTML = '';
+
+      for (let i = 0; i < refRack.levels - 1; i++) {
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between gap-2 bg-slate-900/90 border border-slate-800/90 rounded-lg px-2 py-1.5';
+
+        const leftInfo = document.createElement('div');
+        leftInfo.className = 'flex flex-col';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'text-[11px] font-semibold text-slate-200';
+        titleSpan.textContent = i === 0 ? 'Nivel 1 (Piso → Inf. Viga N2)' : `Nivel ${i + 1} (Apoyo N${i + 1} → Inf. N${i + 2})`;
+
+        const summarySpan = document.createElement('span');
+        summarySpan.id = `lvl-summary-${i}`;
+        summarySpan.className = 'text-[9.5px] font-mono-tech text-slate-400';
+
+        leftInfo.appendChild(titleSpan);
+        leftInfo.appendChild(summarySpan);
+
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.step = '0.005';
+        inp.min = '0.60';
+        inp.max = '4.00';
+        inp.value = (refRack.levelHeights[i] || 1.250).toFixed(3);
+        inp.className =
+          'w-20 bg-slate-800 border border-slate-700 focus:border-sky-500 rounded-md px-2 py-1 font-mono-tech text-right text-white text-[11px] outline-none';
+
+        inp.addEventListener('input', () => {
+          const val = parseFloat(inp.value);
+          if (isNaN(val)) return;
+          const clamped = Math.max(0.50, Math.min(4.50, val));
+          getTargetRacks().forEach((r) => {
+            r.levelHeights[i] = clamped;
+          });
+          rebuildScene();
+        });
+
+        row.appendChild(leftInfo);
+        row.appendChild(inp);
+        container.appendChild(row);
+      }
+    }
+
+    function renderDoubleDepthRacksUI() {
+      const grid = document.getElementById('double-depth-racks-grid');
+      grid.innerHTML = '';
+
+      RACK_IDS.forEach((rId) => {
+        const rack = state.racks[rId];
+        const is2F = rack.doubleDepth;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = is2F
+          ? 'py-1.5 px-2 rounded-lg font-mono-tech text-[11px] font-bold bg-sky-600/90 text-white border border-sky-400 shadow flex items-center justify-between transition'
+          : 'py-1.5 px-2 rounded-lg font-mono-tech text-[11px] font-semibold bg-slate-900 text-slate-300 border border-slate-700 hover:border-slate-500 flex items-center justify-between transition';
+
+        btn.innerHTML = `<span>Rack ${rId}</span><span class="text-[9.5px] px-1 rounded ${is2F ? 'bg-black/30 text-sky-100' : 'bg-slate-800 text-slate-400'}">${is2F ? '2F' : '1F'}</span>`;
+
+        btn.onclick = () => {
+          rack.doubleDepth = !rack.doubleDepth;
+          state.activeScope = `rack:${rId}`;
+          refreshScopeUI();
+        };
+        grid.appendChild(btn);
+      });
+    }
+
+    function renderDoubleLevelRacksUI() {
+      const grid = document.getElementById('double-level-racks-grid');
+      grid.innerHTML = '';
+
+      RACK_IDS.forEach((rId) => {
+        const rack = state.racks[rId];
+        const hasDoubleLevel = rack.disabledLevels.size > 0;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = hasDoubleLevel
+          ? 'py-1.5 px-2 rounded-lg font-mono-tech text-[11px] font-bold bg-orange-600/90 text-white border border-orange-400 shadow flex items-center justify-between transition'
+          : 'py-1.5 px-2 rounded-lg font-mono-tech text-[11px] font-semibold bg-slate-900 text-slate-300 border border-slate-700 hover:border-slate-500 flex items-center justify-between transition';
+
+        btn.innerHTML = `<span>Rack ${rId}</span><span class="text-[9.5px] px-1 rounded ${hasDoubleLevel ? 'bg-black/30 text-orange-100' : 'bg-slate-800 text-slate-400'}">${hasDoubleLevel ? '2X ON' : 'Normal'}</span>`;
+
+        btn.onclick = () => {
+          if (hasDoubleLevel) {
+            rack.disabledLevels.clear();
+          } else {
+            rack.disabledLevels.add(1);
+          }
+          state.activeScope = `rack:${rId}`;
+          refreshScopeUI();
+        };
+        grid.appendChild(btn);
+      });
+
+      const refRack = getReferenceRack();
+      document.getElementById('lbl-beam-target-rack').textContent = getScopeDisplayName();
+      const lvlContainer = document.getElementById('global-beam-levels-container');
+      lvlContainer.innerHTML = '';
+
+      for (let lvl = 1; lvl < refRack.levels; lvl++) {
+        const levelNum = lvl + 1;
+        const isDisabled = refRack.disabledLevels.has(lvl);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = isDisabled ? `Viga N${levelNum}: Quitada (2X)` : `Viga Nivel ${levelNum}`;
+        btn.className = isDisabled
+          ? 'px-2.5 py-1 rounded-md font-mono-tech text-[10.5px] font-semibold bg-orange-950/90 text-orange-300 border border-orange-500/70 transition'
+          : 'px-2.5 py-1 rounded-md font-mono-tech text-[10.5px] font-medium bg-slate-800 text-slate-300 border border-slate-700 hover:border-orange-500/50 transition';
+
+        btn.onclick = () => {
+          getTargetRacks().forEach((r) => {
+            if (isDisabled) r.disabledLevels.delete(lvl);
+            else r.disabledLevels.add(lvl);
+          });
+          renderDoubleLevelRacksUI();
+          rebuildScene();
+        };
+        lvlContainer.appendChild(btn);
+      }
+
+      const selRack = document.getElementById('sel-beam-rack');
+      const selBay = document.getElementById('sel-beam-bay');
+      const selLvl = document.getElementById('sel-beam-level');
+
+      if (state.activeScope.startsWith('rack:')) {
+        selRack.value = state.activeScope.split(':')[1];
+      }
+
+      const chosenRack = state.racks[selRack.value] || refRack;
+      const maxBays = getRackBays(chosenRack);
+      const prevBay = parseInt(selBay.value, 10) || 1;
+      selBay.innerHTML = '';
+      for (let b = 1; b <= Math.max(1, maxBays); b++) {
+        const opt = document.createElement('option');
+        opt.value = b;
+        opt.textContent = `B${b}`;
+        if (b === Math.min(prevBay, maxBays)) opt.selected = true;
+        selBay.appendChild(opt);
+      }
+
+      const prevLvl = parseInt(selLvl.value, 10) || 2;
+      selLvl.innerHTML = '';
+      for (let l = 2; l <= chosenRack.levels; l++) {
+        const opt = document.createElement('option');
+        opt.value = l;
+        opt.textContent = `Nivel ${l}`;
+        if (l === Math.min(prevLvl, chosenRack.levels)) opt.selected = true;
+        selLvl.appendChild(opt);
+      }
+
+      const listContainer = document.getElementById('disabled-beams-list');
+      listContainer.innerHTML = '';
+      let countTramos = 0;
+
+      RACK_IDS.forEach((rId) => {
+        const r = state.racks[rId];
+        r.disabledTramos.forEach((tKey) => {
+          countTramos++;
+          const [b, l] = tKey.split('-');
+          const tag = document.createElement('span');
+          tag.className =
+            'inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950/90 border border-rose-500/50 text-rose-200 font-mono-tech text-[10px]';
+          tag.innerHTML = `<span>${rId}·B${b}·N${l}</span>`;
+
+          const closeBtn = document.createElement('button');
+          closeBtn.type = 'button';
+          closeBtn.textContent = '×';
+          closeBtn.className = 'text-rose-400 hover:text-white font-bold text-xs leading-none ml-0.5';
+          closeBtn.onclick = () => {
+            r.disabledTramos.delete(tKey);
+            renderDoubleLevelRacksUI();
+            rebuildScene();
+          };
+          tag.appendChild(closeBtn);
+          listContainer.appendChild(tag);
+        });
+      });
+
+      if (countTramos === 0) {
+        const emptyHint = document.createElement('span');
+        emptyHint.className = 'text-[10px] text-slate-500 italic';
+        emptyHint.textContent = 'Sin tramos puntuales deshabilitados.';
+        listContainer.appendChild(emptyHint);
+      }
+    }
+
+    function syncTunnelLevelsOptions() {
+      const refRack = getReferenceRack();
+      const sel = document.getElementById('inp-tunnel-levels');
+      const maxTunnelLvl = Math.max(1, refRack.levels - 1);
+      if (refRack.tunnelLevels > maxTunnelLvl) {
+        refRack.tunnelLevels = maxTunnelLvl;
+      }
+      sel.innerHTML = '';
+      for (let i = 1; i <= maxTunnelLvl; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = i === 1 ? '1 Nivel (Piso N1)' : `${i} Niveles (N1–N${i})`;
+        if (i === refRack.tunnelLevels) opt.selected = true;
+        sel.appendChild(opt);
+      }
+    }
+
+    function renderTunnelChips() {
+      const refRack = getReferenceRack();
+      document.getElementById('lbl-tunnel-target-rack').textContent = getScopeDisplayName();
+      const container = document.getElementById('tunnels-bays-container');
+      container.innerHTML = '';
+
+      const numBays = getRackBays(refRack);
+      for (let i = 1; i <= numBays; i++) {
+        const active = refRack.tunnels.has(i);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = `B${i}`;
+        btn.className = active
+          ? 'px-2 py-1 rounded-md font-mono-tech text-[11px] font-bold bg-emerald-600 text-white border border-emerald-400 shadow transition'
+          : 'px-2 py-1 rounded-md font-mono-tech text-[11px] bg-slate-800 text-slate-400 border border-slate-700 hover:text-white transition';
+        btn.onclick = () => {
+          getTargetRacks().forEach((r) => {
+            if (i <= getRackBays(r)) {
+              if (active) r.tunnels.delete(i);
+              else r.tunnels.add(i);
+            }
+          });
+          renderTunnelChips();
+          rebuildScene();
+        };
+        container.appendChild(btn);
+      }
+    }
+
+    function refreshScopeUI() {
+      const refRack = getReferenceRack();
+      const scopeName = getScopeDisplayName();
+
+      document.getElementById('active-rack-badge').textContent = scopeName;
+      document.getElementById('active-scope-subtitle').textContent =
+        `Editando: ${scopeName} (${refRack.doubleDepth ? '2F' : '1F'}) · Bastidor ${refRack.rackHeight.toFixed(2)} m · Luz ${refRack.levelHeights[0].toFixed(3)} m + Peralte ${state.beamHeight.toFixed(2)} m`;
+
+      document.querySelectorAll('.scope-btn').forEach((btn) => {
+        const isSelected = btn.dataset.scope === state.activeScope;
+        if (isSelected) {
+          btn.className =
+            'scope-btn py-1.5 px-1 rounded-md font-mono-tech font-bold text-[11px] bg-orange-600 text-white shadow transition';
+        } else if (btn.dataset.scope.startsWith('rack:')) {
+          btn.className =
+            'scope-btn py-1.5 px-1 rounded-md font-mono-tech font-bold text-[11px] text-slate-300 hover:text-white transition';
+        } else {
+          btn.className =
+            'scope-btn py-1 px-1 rounded-md font-mono-tech font-semibold text-[10.5px] text-sky-300 hover:text-white transition';
+        }
+      });
+
+      document.getElementById('inp-rack-height').value = refRack.rackHeight.toFixed(2);
+      document.getElementById('inp-levels').value = refRack.levels;
+      document.getElementById('inp-uniform-pitch').value = (refRack.levelHeights[0] || 1.250).toFixed(3);
+      document.getElementById('sel-fill-pattern').value = refRack.fillPattern;
+
+      renderIndividualLevelInputs();
+      renderDoubleDepthRacksUI();
+      renderDoubleLevelRacksUI();
+      syncTunnelLevelsOptions();
+      renderTunnelChips();
+      rebuildScene();
+    }
+
+    // =========================================================================
+    // 9. EVENTOS DE INTERFAZ, GUARDADO/COMPARTICIÓN Y VISTAS DE CÁMARA
+    // =========================================================================
+    function bindInputs() {
+      document.getElementById('btn-header-share').addEventListener('click', handleSaveAndShareLink);
+      document.getElementById('btn-save-share-link').addEventListener('click', handleSaveAndShareLink);
+      document.getElementById('btn-save-local-design').addEventListener('click', saveCurrentDesignToHistory);
+
+      document.getElementById('btn-copy-share-url').addEventListener('click', () => {
+        const urlInput = document.getElementById('inp-share-url');
+        if (urlInput && urlInput.value) {
+          copyTextFallback(urlInput.value);
+          showToast('Enlace copiado al portapapeles');
+        }
+      });
+
+      document.getElementById('btn-dismiss-shared-banner').addEventListener('click', () => {
+        document.getElementById('shared-loaded-banner').classList.add('hidden');
+      });
+
+      document.getElementById('btn-export-json').addEventListener('click', () => {
+        const jsonStr = JSON.stringify(serializeStateToPayload(state), null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cosmos-racks-3d-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Archivo JSON exportado');
+      });
+
+      const fileInput = document.getElementById('file-import-json');
+      document.getElementById('btn-import-json').addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const parsed = JSON.parse(String(reader.result || '{}'));
+            if (hydrateStateFromPayload(parsed)) {
+              syncAllGlobalInputsFromState();
+              refreshScopeUI();
+              animateCameraTo(state.activeView || 'iso');
+              showToast('Diseño JSON importado correctamente');
+            } else {
+              showToast('El archivo JSON no tiene un formato válido');
+            }
+          } catch (_) {
+            showToast('Error al leer el archivo JSON');
+          }
+          fileInput.value = '';
+        };
+        reader.readAsText(file);
+      });
+
+      document.querySelectorAll('.scope-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.activeScope = btn.dataset.scope;
+          refreshScopeUI();
+        });
+      });
+
+      document.getElementById('btn-all-2f').addEventListener('click', () => {
+        getTargetRacks().forEach((r) => {
+          r.doubleDepth = true;
+        });
+        renderDoubleDepthRacksUI();
+        rebuildScene();
+        showToast('Doble Profundidad (2F) activada en el alcance seleccionado');
+      });
+
+      document.getElementById('btn-all-1f').addEventListener('click', () => {
+        getTargetRacks().forEach((r) => {
+          r.doubleDepth = false;
+        });
+        renderDoubleDepthRacksUI();
+        rebuildScene();
+        showToast('Simple Profundidad (1F) activada en el alcance seleccionado');
+      });
+
+      document.getElementById('inp-rack-height').addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (isNaN(val)) return;
+        const clamped = Math.max(2.0, Math.min(16.0, val));
+        getTargetRacks().forEach((r) => {
+          r.rackHeight = clamped;
+        });
+        rebuildScene();
+      });
+
+      document.getElementById('inp-levels').addEventListener('change', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (!isNaN(val)) {
+          const clamped = Math.max(3, Math.min(6, val));
+          getTargetRacks().forEach((r) => {
+            r.levels = clamped;
+          });
+          renderIndividualLevelInputs();
+          renderDoubleLevelRacksUI();
+          syncTunnelLevelsOptions();
+          rebuildScene();
+        }
+      });
+
+      // Sincronizar ambos inputs de Peralte / Ancho de Larguero (Sección 1 y Sección 3)
+      const syncBeamHeightInputs = (rawVal) => {
+        const val = parseFloat(rawVal);
+        if (isNaN(val)) return;
+        const clamped = Math.max(0.05, Math.min(0.30, val));
+        state.beamHeight = clamped;
+        document.getElementById('inp-beam-height').value = clamped;
+        document.getElementById('inp-beam-height-top').value = clamped;
+        refreshScopeUI();
+      };
+
+      document.getElementById('inp-beam-height-top').addEventListener('input', (e) => {
+        syncBeamHeightInputs(e.target.value);
+      });
+      document.getElementById('inp-beam-height').addEventListener('input', (e) => {
+        syncBeamHeightInputs(e.target.value);
+      });
+
+      document.getElementById('btn-apply-uniform-pitch').addEventListener('click', () => {
+        const val = parseFloat(document.getElementById('inp-uniform-pitch').value);
+        if (isNaN(val)) return;
+        const clamped = Math.max(0.50, Math.min(4.50, val));
+        getTargetRacks().forEach((r) => {
+          for (let i = 0; i < r.levelHeights.length; i++) {
+            r.levelHeights[i] = clamped;
+          }
+        });
+        renderIndividualLevelInputs();
+        rebuildScene();
+      });
+
+      document.getElementById('btn-copy-heights-all').addEventListener('click', () => {
+        const refRack = getReferenceRack();
+        RACK_IDS.forEach((id) => {
+          const r = state.racks[id];
+          r.rackHeight = refRack.rackHeight;
+          r.levels = refRack.levels;
+          r.levelHeights = [...refRack.levelHeights];
+        });
+        rebuildScene();
+        showToast(`Alturas de Rack ${refRack.id} copiadas a los 6 racks`);
+      });
+
+      document.getElementById('sel-beam-rack').addEventListener('change', () => {
+        renderDoubleLevelRacksUI();
+      });
+
+      document.getElementById('btn-toggle-single-beam').addEventListener('click', () => {
+        const rId = document.getElementById('sel-beam-rack').value;
+        const b = document.getElementById('sel-beam-bay').value;
+        const l = document.getElementById('sel-beam-level').value;
+        const key = `${b}-${l}`;
+        const rack = state.racks[rId];
+        if (rack) {
+          if (rack.disabledTramos.has(key)) rack.disabledTramos.delete(key);
+          else rack.disabledTramos.add(key);
+        }
+        renderDoubleLevelRacksUI();
+        rebuildScene();
+      });
+
+      const bindGlobalNum = (id, key, min, max) => {
+        const el = document.getElementById(id);
+        el.addEventListener('input', () => {
+          const val = parseFloat(el.value);
+          if (isNaN(val)) return;
+          state[key] = Math.max(min, Math.min(max, val));
+          rebuildScene();
+        });
+      };
+
+      bindGlobalNum('inp-beam-length', 'beamLength', 1.0, 4.5);
+      bindGlobalNum('inp-rack-depth', 'rackDepth', 0.6, 2.0);
+      bindGlobalNum('inp-double-depth-gap', 'doubleDepthGap', 0.10, 0.60);
+      bindGlobalNum('inp-back-spacer', 'backToBackSpacer', 0.05, 0.25);
+
+      [1, 2, 3].forEach((aisleId) => {
+        const inpAisle = document.getElementById(`inp-aisle-${aisleId}`);
+        inpAisle.addEventListener('input', () => {
+          const val = parseFloat(inpAisle.value);
+          if (isNaN(val)) return;
+          state.aisleWidths[aisleId] = Math.max(1.5, Math.min(8.0, val));
+          rebuildScene();
+        });
+      });
+
+      document.getElementById('inp-bays-a').addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (!isNaN(val)) {
+          state.baysA = Math.max(1, Math.min(25, val));
+          renderTunnelChips();
+          renderDoubleLevelRacksUI();
+          rebuildScene();
+        }
+      });
+
+      document.getElementById('inp-bays-b').addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (!isNaN(val)) {
+          state.baysB = Math.max(1, Math.min(25, val));
+          renderTunnelChips();
+          renderDoubleLevelRacksUI();
+          rebuildScene();
+        }
+      });
+
+      document.getElementById('inp-tunnel-levels').addEventListener('change', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (!isNaN(val)) {
+          getTargetRacks().forEach((r) => {
+            r.tunnelLevels = val;
+          });
+          rebuildScene();
+        }
+      });
+
+      document.getElementById('chk-pallets').addEventListener('change', (e) => {
+        state.showPallets = e.target.checked;
+        document.getElementById('pallet-occupancy-controls').style.opacity = state.showPallets ? '1' : '0.45';
+        rebuildScene();
+      });
+
+      const applyPalletCountToTargets = (newCount) => {
+        const targets = getTargetRacks();
+        if (targets.length === 1) {
+          targets[0].palletCount = Math.max(0, newCount);
+        } else {
+          const perRack = Math.floor(newCount / targets.length);
+          const rem = newCount % targets.length;
+          targets.forEach((r, idx) => {
+            r.palletCount = perRack + (idx < rem ? 1 : 0);
+          });
+        }
+        rebuildScene();
+      };
+
+      const sliderPallet = document.getElementById('slider-pallet-count');
+      const inpPallet = document.getElementById('inp-pallet-count');
+
+      sliderPallet.addEventListener('input', () => {
+        applyPalletCountToTargets(parseInt(sliderPallet.value, 10) || 0);
+      });
+
+      inpPallet.addEventListener('input', () => {
+        const maxVal = parseInt(inpPallet.max, 10) || 0;
+        let val = parseInt(inpPallet.value, 10);
+        if (isNaN(val)) return;
+        val = Math.max(0, Math.min(maxVal, val));
+        applyPalletCountToTargets(val);
+      });
+
+      document.querySelectorAll('.pct-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const pct = parseFloat(btn.dataset.pct);
+          const maxVal = parseInt(sliderPallet.max, 10) || 0;
+          applyPalletCountToTargets(Math.round(maxVal * pct));
+        });
+      });
+
+      document.getElementById('sel-fill-pattern').addEventListener('change', (e) => {
+        const mode = e.target.value;
+        getTargetRacks().forEach((r) => {
+          r.fillPattern = mode;
+          if (mode === 'random') {
+            r.randomSeed = Math.floor(Math.random() * 10000);
+          }
+        });
+        rebuildScene();
+      });
+
+      document.getElementById('chk-dimensions').addEventListener('change', (e) => {
+        state.showDimensions = e.target.checked;
+        rebuildScene();
+      });
+
+      document.getElementById('chk-guards').addEventListener('change', (e) => {
+        state.showGuards = e.target.checked;
+        rebuildScene();
+      });
+
+      const sidebar = document.getElementById('control-sidebar');
+      const toggleBtn = document.getElementById('toggle-sidebar-btn');
+      const toggleText = document.getElementById('toggle-sidebar-text');
+      let sidebarOpen = true;
+      toggleBtn.addEventListener('click', () => {
+        sidebarOpen = !sidebarOpen;
+        sidebar.style.transform = sidebarOpen ? 'translateX(0)' : 'translateX(calc(100% + 24px))';
+        toggleText.textContent = sidebarOpen ? 'Ocultar Panel' : 'Mostrar Panel';
+      });
+
+      document.getElementById('btn-reset-defaults').addEventListener('click', () => {
+        state = createInitialState();
+        try {
+          const cleanUrl = new URL(window.location.href);
+          cleanUrl.searchParams.delete('cfg');
+          cleanUrl.hash = '';
+          window.history.replaceState(null, '', cleanUrl.toString());
+        } catch (_) {}
+        closeShareModal();
+        document.getElementById('shared-loaded-banner').classList.add('hidden');
+        syncAllGlobalInputsFromState();
+        refreshScopeUI();
+        animateCameraTo('iso');
+        showToast('Parámetros restaurados a valores por defecto');
+      });
+    }
+
+    let camAnim = null;
+
+    function animateCameraTo(viewKey) {
+      state.activeView = viewKey;
+      const lenA = calculateRowTotalLength(state.baysA, state.beamLength);
+      const lenB = calculateRowTotalLength(state.baysB, state.beamLength);
+      const maxLen = Math.max(lenA, lenB, 10);
+      const midH = 2.4;
+
+      const targetPos = new THREE.Vector3();
+      const targetLook = new THREE.Vector3(0, midH, 0);
+
+      if (viewKey === 'iso') {
+        targetPos.set(maxLen * 0.82, 14.5, maxLen * 1.05);
+      } else if (viewKey === 'front') {
+        targetPos.set(0, midH + 1.2, maxLen * 1.45);
+      } else if (viewKey === 'top') {
+        targetPos.set(0, Math.max(32, maxLen * 1.45), 0.01);
+        targetLook.set(0, 0, 0);
+      } else if (viewKey === 'aisle1') {
+        const z1 = aisleCenterZMap[1] || -6.5;
+        targetPos.set(-maxLen * 0.56, 2.3, z1);
+        targetLook.set(maxLen * 0.35, 2.2, z1);
+      } else if (viewKey === 'aisle2') {
+        const z2 = aisleCenterZMap[2] || 0;
+        targetPos.set(-maxLen * 0.56, 2.3, z2);
+        targetLook.set(maxLen * 0.35, 2.2, z2);
+      } else if (viewKey === 'aisle3') {
+        const z3 = aisleCenterZMap[3] || 6.5;
+        targetPos.set(-maxLen * 0.56, 2.3, z3);
+        targetLook.set(maxLen * 0.35, 2.2, z3);
+      }
+
+      camAnim = {
+        startPos: camera.position.clone(),
+        endPos: targetPos,
+        startLook: controls.target.clone(),
+        endLook: targetLook,
+        progress: 0,
+      };
+
+      document.querySelectorAll('.cam-view-btn').forEach((btn) => {
+        const isAct = btn.dataset.view === viewKey;
+        if (viewKey === 'aisle3') {
+          btn.className = isAct
+            ? 'cam-view-btn px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-orange-600 text-white shadow transition'
+            : 'cam-view-btn px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition';
+        } else {
+          btn.className = isAct
+            ? 'cam-view-btn px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white shadow transition'
+            : 'cam-view-btn px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition';
+        }
+      });
+
+      syncUrlAndAutosave(false);
+    }
+
+    document.querySelectorAll('.cam-view-btn').forEach((btn) => {
+      btn.addEventListener('click', () => animateCameraTo(btn.dataset.view));
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (camAnim) {
+        camAnim.progress = Math.min(1, camAnim.progress + 0.045);
+        const t = 1 - Math.pow(1 - camAnim.progress, 3);
+        camera.position.lerpVectors(camAnim.startPos, camAnim.endPos, t);
+        controls.target.lerpVectors(camAnim.startLook, camAnim.endLook, t);
+        if (camAnim.progress >= 1) camAnim = null;
+      }
+
+      controls.update();
+      updateProjectedLabels();
+      renderer.render(scene, camera);
+    }
+
+    window.onload = () => {
+      let loadedFromSharedUrl = false;
+      const cfgToken = extractCfgTokenFromLocation();
+
+      if (cfgToken) {
+        try {
+          const decoded = decodeBase64UrlToPayload(cfgToken);
+          if (hydrateStateFromPayload(decoded)) {
+            loadedFromSharedUrl = true;
+          }
+        } catch (_) {}
+      }
+
+      if (!loadedFromSharedUrl) {
+        try {
+          const autosaveRaw = localStorage.getItem(STORAGE_KEY_AUTOSAVE);
+          if (autosaveRaw) {
+            hydrateStateFromPayload(JSON.parse(autosaveRaw));
+          }
+        } catch (_) {}
+      }
+
+      bindInputs();
+      syncAllGlobalInputsFromState();
+      renderSavedDesignsList();
+      refreshScopeUI();
+      animateCameraTo(state.activeView || 'iso');
+
+      if (loadedFromSharedUrl) {
+        document.getElementById('shared-loaded-banner').classList.remove('hidden');
+      }
+
+      animate();
+    };
+  </script>
+</body>
+</html>
